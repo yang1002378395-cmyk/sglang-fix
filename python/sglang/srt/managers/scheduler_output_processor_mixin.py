@@ -548,11 +548,6 @@ class SchedulerOutputProcessorMixin:
                 batch, num_accepted_tokens=result.num_accepted_tokens
             )
 
-        if self.enable_hisparse:
-            self.hisparse_coordinator.update_requests_after_decode(
-                [req for req in batch.reqs if not req.finished()]
-            )
-
     def _mamba_prefix_cache_update(
         self, req: Req, batch: ScheduleBatch, result: GenerationBatchResult, i: int
     ) -> None:

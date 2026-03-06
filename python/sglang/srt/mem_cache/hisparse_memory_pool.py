@@ -311,11 +311,11 @@ class HiSparseTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
         self.logical_attn_allocator.clear()
         self.hisparse_attn_allocator.clear()
         # todo hisparse: shuffle the free pages to trigger memory mapping failure more easily, to be removed
-        # self.hisparse_attn_allocator.free_pages = (
-        #     self.hisparse_attn_allocator.free_pages[
-        #         torch.randperm(len(self.hisparse_attn_allocator.free_pages))
-        #     ]
-        # )
+        self.hisparse_attn_allocator.free_pages = (
+            self.hisparse_attn_allocator.free_pages[
+                torch.randperm(len(self.hisparse_attn_allocator.free_pages))
+            ]
+        )
 
         # Note: the last item is -1, we don't clear it, see the comment in __init__
         self.full_to_hisparse_device_index_mapping[:-1].fill_(0)

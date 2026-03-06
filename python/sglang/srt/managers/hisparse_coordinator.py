@@ -62,16 +62,15 @@ class HiSparseCoordinator:
         self.req_to_device_buffer = torch.zeros(
             (max_num_reqs, self.padded_buffer_size), dtype=torch.int64, device=device
         )
-        self.req_to_host_pool = torch.zeros(
+        self.req_to_host_pool = torch.full(
             (max_num_reqs, max_context_len),
+            -1,
             dtype=torch.int64,
             device=device,
         )
 
         self.write_staging_stream = device_module.Stream()
-        self.write_decoding_stream = device_module.Stream()
         self.ack_staging_queue: List[HiSparseAct] = []
-        self.ack_decoding_queue: List[HiSparseAct] = []
 
         self.tp_group = tp_group
         self.tp_world_size = torch.distributed.get_world_size(group=self.tp_group)
@@ -139,7 +138,7 @@ class HiSparseCoordinator:
 
     def alloc_device_buffer(self, req: Req) -> None:
         allocated_indices = self.req_to_token_pool.req_to_token[
-            req.req_pool_idx, : len(req.fill_ids)
+            req.req_pool_idx, : req.kv_allocated_len
         ]
         buffer_indices = self.token_to_kv_pool_allocator.alloc_device_buffer(
             allocated_indices,
@@ -203,6 +202,8 @@ class HiSparseCoordinator:
         out_cache_loc: torch.Tensor,
         req_pool_indices: torch.Tensor,
     ) -> None:
+        self._eager_backup_previous_token(seq_lens, req_pool_indices)
+
         reserved_buffer_loc = self.req_to_device_buffer[
             req_pool_indices, self.device_buffer_size
         ]
@@ -217,8 +218,55 @@ class HiSparseCoordinator:
         self.mem_pool_device.full_to_hisparse_device_index_mapping[out_cache_loc] = (
             reserved_buffer_loc
         )
-        # proceed only if the backup is finished for new generated tokens
-        self.wait_for_decode_writes()
+
+    def _eager_backup_previous_token(
+        self,
+        seq_lens: torch.Tensor,
+        req_pool_indices: torch.Tensor,
+    ) -> None:
+        """Back up the previous decode token from the reserved device buffer slot.
+
+        Called at the start of map_last_loc_to_buffer (inside prepare_for_decode)
+        so the backup runs on the default stream *before* the forward overwrites
+        the reserved slot.
+
+        For long sequences, at every decode step the token at position
+        seq_len - 2 needs a host backup — except on the very first decode,
+        where that position is a prefill token already backed up during
+        staging (detected by req_to_host_pool >= 0).
+        """
+        prev_pos = seq_lens - 2
+        long_mask = (prev_pos >= 0) & (seq_lens > self.device_buffer_size)
+        if not torch.any(long_mask):
+            return
+
+        candidate_reqs = req_pool_indices[long_mask]
+        candidate_pos = prev_pos[long_mask]
+
+        # Skip positions already backed up (first decode after prefill)
+        needs_backup = self.req_to_host_pool[candidate_reqs, candidate_pos] < 0
+        if not torch.any(needs_backup):
+            return
+
+        backup_req_indices = candidate_reqs[needs_backup]
+        backup_positions = candidate_pos[needs_backup]
+
+        device_locs = self.req_to_device_buffer[
+            backup_req_indices, self.device_buffer_size
+        ]
+
+        host_locs = self.mem_pool_host.alloc(len(device_locs)).to(device=self.device)
+        assert host_locs is not None, "Host mem pool alloc failed"
+        self.req_to_host_pool[backup_req_indices, backup_positions] = host_locs
+
+        # Runs on the default stream; forward_stream.wait_stream(default_stream)
+        # ensures the backup completes before the forward overwrites the slot.
+        self.mem_pool_host.backup_from_device_all_layer(
+            self.mem_pool_device,
+            host_locs,
+            device_locs.contiguous(),
+            io_backend="kernel",
+        )
 
     def get_front_topk_tokens(
         self,
@@ -249,11 +297,21 @@ class HiSparseCoordinator:
         top_k_tokens: torch.Tensor,
         layer_id: int,
     ) -> torch.Tensor:
-        # a dummy selection for testing
+        """Load top-k selected tokens into device memory and return their device indices.
+        Args:
+            req_pool_indices: Pool indices for each request.  Shape: (num_reqs,)
+            seq_lens: Sequence lengths for each request.  Shape: (num_reqs,)
+            top_k_tokens: Selected token positions per request.  Shape: (num_reqs, top_k)
+            layer_id: The layer to load KV cache for.
+
+        Returns:
+            Device KV cache indices for the selected tokens.  Shape: (num_reqs, top_k)
+        """
         num_reqs = req_pool_indices.size(0)
         top_k_indices = torch.full(
             (num_reqs, self.top_k), -1, dtype=torch.int32, device=self.device
         )
+
         for i in range(num_reqs):
             seq_len = int(seq_lens[i].item())
             top_n = min(seq_len, self.top_k)
@@ -262,94 +320,70 @@ class HiSparseCoordinator:
 
             req_idx = int(req_pool_indices[i].item())
             selected_tokens = top_k_tokens[i, :top_n].to(dtype=torch.int64)
-            assert torch.all(selected_tokens >= 0), "Selected invalid token positions"
+
+            # Validate token positions
             assert torch.all(
-                selected_tokens < seq_len
-            ), "Selected token positions out of range"
+                selected_tokens >= 0
+            ), f"Req {req_idx}: selected tokens contain negative positions"
+            assert torch.all(selected_tokens < seq_len), (
+                f"Req {req_idx}: selected tokens {selected_tokens.tolist()} "
+                f"out of range for seq_len={seq_len}"
+            )
+
             if seq_len <= self.device_buffer_size:
+                # Short sequence: all tokens reside in the device buffer,
+                # directly indexed by token position.
                 device_indices = self.req_to_device_buffer[req_idx, selected_tokens]
             else:
-                special_tokens_mask = selected_tokens == seq_len - 1
-                host_indices = self.req_to_host_pool[
-                    req_idx, selected_tokens[~special_tokens_mask]
-                ]
-                assert torch.all(
-                    host_indices > 0
-                ), "Host indices should be valid for non-special tokens"
-                device_indices = self.req_to_device_buffer[req_idx, selected_tokens]
-                device_indices[special_tokens_mask] = self.req_to_device_buffer[
+                # Long sequence: latest token uses reserved slot; all others
+                # are loaded from host into reusable device buffer slots.
+                device_indices = torch.empty(
+                    top_n, dtype=torch.int64, device=self.device
+                )
+
+                is_latest_token = selected_tokens == (seq_len - 1)
+                needs_host_load = ~is_latest_token
+
+                # Assign the reserved buffer slot for the latest token
+                device_indices[is_latest_token] = self.req_to_device_buffer[
                     req_idx, self.device_buffer_size
                 ]
-                self.mem_pool_host.load_to_device_per_layer(
-                    self.mem_pool_device,
-                    host_indices,
-                    device_indices[~special_tokens_mask],
-                    layer_id,
-                    io_backend="kernel",
-                )
-            top_k_indices[i][:top_n] = device_indices.to(torch.int32)
-        return top_k_indices
 
-    def wait_for_decode_writes(self) -> None:
-        if len(self.ack_decoding_queue) == 0:
-            return
-        _, finish_event, _ = self.ack_decoding_queue.pop(0)
-        finish_event.synchronize()
+                # Load all other tokens from host
+                num_to_load = int(needs_host_load.sum().item())
+                if num_to_load > 0:
+                    tokens_to_load = selected_tokens[needs_host_load]
+                    host_locs = self.req_to_host_pool[req_idx, tokens_to_load]
+
+                    invalid_mask = host_locs < 0
+                    if torch.any(invalid_mask):
+                        bad_positions = tokens_to_load[invalid_mask].tolist()
+                        raise AssertionError(
+                            f"Req {req_idx} (seq_len={seq_len}, layer={layer_id}): "
+                            f"missing host backup at token positions {bad_positions}"
+                        )
+
+                    # Reuse the first num_to_load slots in the device buffer
+                    buffer_locs = self.req_to_device_buffer[req_idx, :num_to_load]
+                    device_indices[needs_host_load] = buffer_locs
+
+                    self.mem_pool_host.load_to_device_per_layer(
+                        self.mem_pool_device,
+                        host_locs,
+                        buffer_locs,
+                        layer_id,
+                        io_backend="kernel",
+                    )
+
+            top_k_indices[i, :top_n] = device_indices.to(torch.int32)
+
+        return top_k_indices
 
     def retract_req(self, req: Req) -> None:
         # release resources for the request
         # todo, cancel ongoing data transfer for the request if any
         self.request_finished(req)
         return
-
-    def update_requests_after_decode(self, reqs: List[Req]) -> None:
-        if len(reqs) == 0:
-            return
-        # todo, adjust the granularity to mitigate the overhead
-        req_pool_indices = torch.tensor(
-            [r.req_pool_idx for r in reqs], device=self.device
-        )
-        req_kv_lens = torch.tensor(
-            [r.kv_allocated_len for r in reqs],
-            device=self.device,
-        )
-        last_token_indices = self.req_to_device_buffer[
-            req_pool_indices, self.device_buffer_size
-        ]
-
-        short_reqs = req_kv_lens <= self.device_buffer_size
-        if torch.any(short_reqs):
-            last_token_indices[short_reqs] = self.req_to_device_buffer[
-                req_pool_indices[short_reqs], req_kv_lens[short_reqs] - 1
-            ]
-
-        # backup the new KV cache to host for future use
-        host_indices = self.mem_pool_host.alloc(len(last_token_indices)).to(
-            device=self.device
-        )
-        assert (
-            host_indices is not None
-        ), "Host mem pool alloc failed, this should not happen"
-        self.req_to_host_pool[req_pool_indices, req_kv_lens - 1] = host_indices
-
-        start_event = device_module.Event()
-        finish_event = device_module.Event()
-        start_event.record()
-        with device_module.stream(self.write_decoding_stream):
-            start_event.wait(self.write_decoding_stream)
-            self.mem_pool_host.backup_from_device_all_layer(
-                self.mem_pool_device,
-                host_indices,
-                last_token_indices.contiguous(),
-                io_backend="kernel",
-            )
-            finish_event.record()
-            if host_indices.is_cuda:
-                host_indices.record_stream(self.write_decoding_stream)
-            if last_token_indices.is_cuda:
-                last_token_indices.record_stream(self.write_decoding_stream)
-
-        self.ack_decoding_queue.append(HiSparseAct(start_event, finish_event, None))
 
     def request_finished(self, req: Req):
         # release memory
@@ -364,12 +398,12 @@ class HiSparseCoordinator:
         ] = 0
 
         host_indices = self.req_to_host_pool[req.req_pool_idx, : req.kv_allocated_len]
-        host_indices = host_indices[host_indices > 0]
+        host_indices = host_indices[host_indices >= 0]
         if host_indices.numel() > 0:
             self.mem_pool_host.free(host_indices)
         # clear req info
         self.req_device_buffer_tokens[req.req_pool_idx, :, :] = -1
         self.req_device_buffer_token_locs[req.req_pool_idx, :, :] = -1
         self.req_to_device_buffer[req.req_pool_idx, :] = 0
-        self.req_to_host_pool[req.req_pool_idx, :] = 0
+        self.req_to_host_pool[req.req_pool_idx, :] = -1
         self.lru_slots[req.req_pool_idx].copy_(self._lru_init)
