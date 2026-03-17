@@ -29,8 +29,8 @@ class HiSparseNSATokenToKVPool(NSATokenToKVPool):
         kv_cache_dim: int,
         start_layer: Optional[int] = None,
         end_layer: Optional[int] = None,
+        host_to_device_ratio: int = 2,
     ):
-        # todo hisparse: fix the hack for index buf size
         super().__init__(
             size=size,
             page_size=page_size,
@@ -44,7 +44,7 @@ class HiSparseNSATokenToKVPool(NSATokenToKVPool):
             kv_cache_dim=kv_cache_dim,
             start_layer=start_layer,
             end_layer=end_layer,
-            index_buf_size=size * 2,
+            index_buf_size=size * host_to_device_ratio,
         )
         self.bytes_per_token = self.kv_cache_dim * self.dtype.itemsize
 
@@ -116,10 +116,10 @@ class HiSparseTokenToKVPoolAllocator(BaseTokenToKVPoolAllocator):
         device: torch.device,
         kvcache: NSATokenToKVPool,
         need_sort: bool,
+        host_to_device_ratio: int = 2,
     ):
         self._kvcache = kvcache
-        # todo: adapt to the host memory size
-        self._size_full = size * 2
+        self._size_full = size * host_to_device_ratio
         self._size_hisparse = size
         self.dtype = dtype
         self.device = device

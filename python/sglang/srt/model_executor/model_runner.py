@@ -618,18 +618,21 @@ class ModelRunner(ModelRunnerKVCacheMixin):
         # Init hisparse coordinator (must happen before CUDA graph capture)
         if self.enable_hisparse:
             from sglang.srt.managers.hisparse_coordinator import HiSparseCoordinator
+            from sglang.srt.mem_cache.sparsity import parse_hisparse_config
 
+            hisparse_cfg = parse_hisparse_config(self.server_args)
             self.hisparse_coordinator = HiSparseCoordinator(
                 req_to_token_pool=self.req_to_token_pool,
                 token_to_kv_pool_allocator=self.token_to_kv_pool_allocator,
-                top_k=2048,
-                device_buffer_size=4096,
+                top_k=hisparse_cfg.top_k,
+                device_buffer_size=hisparse_cfg.device_buffer_size,
                 device=self.device,
                 tp_group=(
                     self.attention_tp_group.cpu_group
                     if self.server_args.enable_dp_attention
                     else self.tp_group.cpu_group
                 ),
+                host_to_device_ratio=hisparse_cfg.host_to_device_ratio,
             )
 
         # Init routed experts capturer

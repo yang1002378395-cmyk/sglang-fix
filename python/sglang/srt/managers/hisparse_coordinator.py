@@ -36,6 +36,7 @@ class HiSparseCoordinator:
         device_buffer_size: int,
         device: str,
         tp_group: torch.distributed.ProcessGroup,
+        host_to_device_ratio: int = 2,
     ):
         self.req_to_token_pool = req_to_token_pool
         self.token_to_kv_pool_allocator = token_to_kv_pool_allocator
@@ -48,7 +49,7 @@ class HiSparseCoordinator:
         )
         self.mem_pool_host = MLATokenToKVPoolHost(
             device_pool=self.mem_pool_device,
-            host_to_device_ratio=2,
+            host_to_device_ratio=host_to_device_ratio,
             host_size=0,
             page_size=1,  # for simplicity, we set page size to 1 to enable backup one token at a time
             layout="layer_first",
@@ -525,9 +526,7 @@ class HiSparseCoordinator:
                 f"top_k_result dtype {top_k_result.dtype} is not int32 as expected"
             )
 
-        num_reqs = req_pool_indices.size(0)
-        # Reuse pre-allocated buffer (CUDA-graph safe: stable address)
-        top_k_indices = self.top_k_device_locs_buffer[:num_reqs]
+        top_k_indices = self.top_k_device_locs_buffer[: req_pool_indices.size(0)]
         top_k_indices.fill_(-1)
         self.residency_map.fill_(-1)
         # todo, adjustable for performance
