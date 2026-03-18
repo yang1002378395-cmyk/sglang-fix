@@ -13,6 +13,7 @@ from transformers.masking_utils import (
 )
 from transformers.modeling_flash_attention_utils import FlashAttentionKwargs
 from transformers.modeling_outputs import BaseModelOutputWithPast
+from transformers.modeling_utils import ALL_ATTENTION_FUNCTIONS
 from transformers.utils import TransformersKwargs, is_torchdynamo_compiling
 
 from sglang.multimodal_gen.configs.models.encoders.qwen_image import Qwen2_5VLConfig
@@ -77,6 +78,14 @@ from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
 logger = logging.getLogger(__name__)
 
 
+def _get_attention_interface(attn_implementation: str | None) -> Callable:
+    if hasattr(ALL_ATTENTION_FUNCTIONS, "get_interface"):
+        return ALL_ATTENTION_FUNCTIONS.get_interface(
+            attn_implementation, eager_attention_forward
+        )
+    return ALL_ATTENTION_FUNCTIONS.get(attn_implementation, eager_attention_forward)
+
+
 class Qwen2_5_VLAttention(nn.Module):
     """
     Multi-headed attention from 'Attention Is All You Need' paper. Modified to use sliding window attention: Longformer
@@ -134,10 +143,10 @@ class Qwen2_5_VLAttention(nn.Module):
             num_kv_heads=self.num_key_value_heads,
             softmax_scale=self.scaling,
             causal=True,
-            # Qwen-Image text encoder must match the official HF path closely.
-            # FlashAttention changes prompt embeddings measurably on this model,
-            # while Torch SDPA is bit-exact in our single-card validation.
-            supported_attention_backends=(AttentionBackendEnum.TORCH_SDPA,),
+            supported_attention_backends=(
+                AttentionBackendEnum.FA,
+                AttentionBackendEnum.TORCH_SDPA,
+            ),
         )
 
     def forward(
@@ -179,26 +188,21 @@ class Qwen2_5_VLAttention(nn.Module):
                 key_states, value_states, self.layer_idx, cache_kwargs
             )
 
-        attention_interface: Callable = eager_attention_forward
-        # if self.config._attn_implementation != "eager":
-        # attention_interface = ALL_ATTENTION_FUNCTIONS["sdpa"]
-        query_states = query_states.transpose(1, 2)
-        key_states = key_states.transpose(1, 2)
-        value_states = value_states.transpose(1, 2)
-        attn_output = self.attn(query_states, key_states, value_states)
-        #
-        # attn_output, attn_weights = attention_interface(
-        #     self,
-        #     query_states,
-        #     key_states,
-        #     value_states,
-        #     attention_mask,
-        #     dropout=0.0 if not self.training else self.attention_dropout,
-        #     scaling=self.scaling,
-        #     sliding_window=self.sliding_window,
-        #     position_ids=position_ids,  # pass positions for FA2
-        #     **kwargs,
-        # )
+        attention_interface: Callable = _get_attention_interface(
+            getattr(self.config, "_attn_implementation", None)
+        )
+        attn_output, attn_weights = attention_interface(
+            self,
+            query_states,
+            key_states,
+            value_states,
+            attention_mask,
+            dropout=0.0 if not self.training else self.attention_dropout,
+            scaling=self.scaling,
+            sliding_window=self.sliding_window,
+            position_ids=position_ids,
+            **kwargs,
+        )
 
         attn_output = attn_output.reshape(bsz, q_len, -1).contiguous()
         attn_output = self.o_proj(attn_output)
@@ -1037,7 +1041,7 @@ class Qwen2_5_VLForConditionalGeneration(TextEncoder):
         self.config = config
 
     def get_input_embeddings(self):
-        return self.model.embed_tokens
+        return self.model.get_input_embeddings()
 
     @torch.no_grad()
     def forward(
@@ -1145,7 +1149,7 @@ class Qwen2_5_VLForConditionalGeneration(TextEncoder):
         return loaded_params
 
     def get_embed_and_head(self):
-        return self.model.embed_tokens.weight, self.lm_head.weight
+        return self.model.get_input_embeddings().weight, self.lm_head.weight
 
 
 EntryClass = Qwen2_5_VLForConditionalGeneration

@@ -7,8 +7,6 @@ Prompt encoding stages for diffusion pipelines.
 This module contains implementations of prompt encoding stages for diffusion pipelines.
 """
 
-import os
-
 import torch
 
 from sglang.multimodal_gen.configs.models.encoders import BaseEncoderOutput
@@ -19,8 +17,6 @@ from sglang.multimodal_gen.configs.pipeline_configs.qwen_image import (
 )
 from sglang.multimodal_gen.runtime.distributed import (
     get_local_torch_device,
-    get_sp_parallel_rank,
-    get_world_rank,
 )
 from sglang.multimodal_gen.runtime.managers.forward_context import set_forward_context
 from sglang.multimodal_gen.runtime.pipelines_core.schedule_batch import Req
@@ -35,37 +31,6 @@ from sglang.multimodal_gen.runtime.server_args import ServerArgs
 from sglang.multimodal_gen.runtime.utils.logging_utils import init_logger
 
 logger = init_logger(__name__)
-
-
-def _env_flag(name: str) -> bool:
-    value = os.environ.get(name)
-    return value is not None and value.lower() not in ("0", "false", "no", "")
-
-
-def _maybe_dump_text_stage_outputs(
-    prompt_embeds_list: list[torch.Tensor],
-    prompt_masks_list: list[torch.Tensor],
-    pooler_embeds_list: list[torch.Tensor],
-) -> None:
-    dump_path = os.getenv("SGLANG_DEBUG_DUMP_PROMPT_EMBEDS_PATH")
-    if not dump_path:
-        return
-    world_rank = get_world_rank()
-    sp_rank = get_sp_parallel_rank()
-    if "{world_rank}" in dump_path:
-        dump_path = dump_path.format(world_rank=world_rank, sp_rank=sp_rank)
-    elif world_rank != 0:
-        dump_path = f"{dump_path}.rank{world_rank}"
-    torch.save(
-        {
-            "world_rank": world_rank,
-            "sp_rank": sp_rank,
-            "prompt_embeds": [x.detach().cpu() for x in prompt_embeds_list],
-            "prompt_masks": [x.detach().cpu() for x in prompt_masks_list],
-            "pooler_embeds": [x.detach().cpu() for x in pooler_embeds_list],
-        },
-        dump_path,
-    )
 
 
 class TextEncodingStage(PipelineStage):
@@ -110,9 +75,6 @@ class TextEncodingStage(PipelineStage):
             server_args,
             encoder_index=all_indices,
             return_attention_mask=True,
-        )
-        _maybe_dump_text_stage_outputs(
-            prompt_embeds_list, prompt_masks_list, pooler_embeds_list
         )
 
         for pe in prompt_embeds_list:
@@ -254,7 +216,6 @@ class TextEncodingStage(PipelineStage):
         pooled_embeds_list: list[torch.Tensor] = []
 
         attn_masks_list: list[torch.Tensor] = []
-        debug_records: list[dict] = []
 
         preprocess_funcs = server_args.pipeline_config.preprocess_text_funcs
         postprocess_funcs = server_args.pipeline_config.postprocess_text_funcs
@@ -310,10 +271,7 @@ class TextEncodingStage(PipelineStage):
                 "attention_mask": attention_mask,
                 "output_hidden_states": True,
             }
-            if not (
-                _env_flag("SGLANG_TEXT_ENCODING_LEAVE_USE_CACHE_DEFAULT")
-                or isinstance(server_args.pipeline_config, QwenImagePipelineConfig)
-            ):
+            if not (isinstance(server_args.pipeline_config, QwenImagePipelineConfig)):
                 encoder_kwargs["use_cache"] = False
 
             with set_forward_context(current_timestep=0, attn_metadata=None):
@@ -324,21 +282,6 @@ class TextEncodingStage(PipelineStage):
                 prompt_embeds, attention_mask = postprocess_out
             else:
                 prompt_embeds = postprocess_out
-
-            if isinstance(server_args.pipeline_config, QwenImagePipelineConfig):
-                debug_records.append(
-                    {
-                        "encoder_index": i,
-                        "processed_text_list": list(processed_text_list),
-                        "input_ids": text_inputs["input_ids"].detach().cpu(),
-                        "text_attention_mask": text_inputs["attention_mask"]
-                        .detach()
-                        .cpu(),
-                        "encoder_kwargs_use_cache": encoder_kwargs.get("use_cache"),
-                        "prompt_embeds": prompt_embeds.detach().cpu(),
-                        "prompt_attention_mask": attention_mask.detach().cpu(),
-                    }
-                )
 
             if dtype is not None:
                 prompt_embeds = prompt_embeds.to(dtype=dtype)
@@ -351,14 +294,6 @@ class TextEncodingStage(PipelineStage):
 
         # Shape results according to return_type
         if return_type == "list":
-            dump_path = os.environ.get("SGLANG_QWEN_TEXT_ENCODING_DEBUG_PATH")
-            if (
-                dump_path
-                and isinstance(server_args.pipeline_config, QwenImagePipelineConfig)
-                and debug_records
-                and not os.path.exists(dump_path)
-            ):
-                torch.save({"records": debug_records}, dump_path)
             if return_attention_mask:
                 return embeds_list, attn_masks_list, pooled_embeds_list
             return embeds_list, pooled_embeds_list

@@ -489,7 +489,7 @@ class USPAttention(nn.Module):
         ctx_attn_metadata,
         num_rep: int,
     ) -> torch.Tensor:
-        """Ulysses attention where the last *num_rep* tokens are replicated
+        """Ulysses attention where the last num_rep tokens are replicated
         across SP ranks and should not be duplicated by the all-to-all."""
         if num_rep <= 0:
             raise ValueError("num_rep must be positive for replicated suffix.")
@@ -498,9 +498,10 @@ class USPAttention(nn.Module):
         k_shard, k_rep = k[:, :-num_rep], k[:, -num_rep:]
         v_shard, v_rep = v[:, :-num_rep], v[:, -num_rep:]
 
-        # Dense self-attention is permutation equivariant for non-causal use.
-        # Rotate the replicated suffix to the front, reuse the validated
-        # replicated-prefix path, then rotate the output back.
+        # dense self-attention is permutation equivariant for non-causal use.
+        # 1. rotate the replicated suffix to the front
+        # 2. reuse the validated replicated-prefix path, then
+        # 3. rotate the output back
         out = self._forward_with_replicated_prefix(
             torch.cat([q_rep, q_shard], dim=1),
             torch.cat([k_rep, k_shard], dim=1),

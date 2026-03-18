@@ -1031,6 +1031,11 @@ class QwenImageTransformer2DModel(CachableDiT, OffloadableDiTMixin):
         joint_attention_dim = config.arch_config.joint_attention_dim
         axes_dims_rope = config.arch_config.axes_dims_rope
         self.zero_cond_t = getattr(config.arch_config, "zero_cond_t", False)
+        # Qwen/Qwen-Image-Edit-2511 carries `zero_cond_t` in HF config.json, but the
+        # official diffusers transformer ignores it. Keep that parity for HF-loaded
+        # checkpoints while preserving the explicit ComfyUI/custom-config path.
+        if hf_config.get("zero_cond_t") is not None:
+            self.zero_cond_t = False
         self.out_channels = out_channels or in_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 

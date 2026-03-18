@@ -5,7 +5,6 @@
 Decoding stage for diffusion pipelines.
 """
 
-import os
 import weakref
 
 import torch
@@ -239,11 +238,7 @@ class DecodingStage(PipelineStage):
             trajectory_latents=batch.trajectory_latents,
             trajectory_decoded=trajectory_decoded,
             metrics=batch.metrics,
-            noise_pred=(
-                getattr(batch, "noise_pred", None)
-                if os.getenv("SGLANG_DEBUG_KEEP_NOISE_PRED") == "1"
-                else None
-            ),
+            noise_pred=None,
         )
 
         # Keep VAE resident during warmup; the real request needs it next.

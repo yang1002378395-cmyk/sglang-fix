@@ -128,6 +128,7 @@ class QwenImagePipelineConfig(ImagePipelineConfig):
     """Configuration for the QwenImage pipeline."""
 
     should_use_guidance: bool = False
+    use_true_cfg_scale: bool = True
     task_type: ModelTaskType = ModelTaskType.T2I
 
     vae_tiling: bool = False
@@ -171,7 +172,7 @@ class QwenImagePipelineConfig(ImagePipelineConfig):
         prompt = batch.prompt if not neg else batch.negative_prompt
         if prompt:
             prompt_template_encode = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n"
-            txt = prompt_template_encode.format(batch.prompt)
+            txt = prompt_template_encode.format(prompt)
             return dict(text=[txt], padding=True)
         else:
             return {}
@@ -287,6 +288,7 @@ class QwenImageEditPipelineConfig(QwenImagePipelineConfig):
     """Configuration for the QwenImageEdit pipeline."""
 
     task_type: ModelTaskType = ModelTaskType.I2I
+    apply_true_cfg_token_norm: bool = True
 
     def _prepare_edit_cond_kwargs(
         self, batch, prompt_embeds, rotary_emb, device, dtype
@@ -390,10 +392,9 @@ class QwenImageEditPipelineConfig(QwenImagePipelineConfig):
         )
 
     def calculate_condition_image_size(self, image, width, height) -> tuple[int, int]:
-        calculated_width, calculated_height, _ = calculate_dimensions(
-            1024 * 1024, width / height
-        )
-        return calculated_width, calculated_height
+        # Keep the original condition image for prompt encoding. The resized edit
+        # image used by VAE/DiT is already prepared separately via batch.vae_image.
+        return None
 
     def slice_noise_pred(self, noise, latents):
         # remove noise over input image
@@ -465,10 +466,9 @@ class QwenImageEditPlusPipelineConfig(QwenImageEditPipelineConfig):
         return new_images
 
     def calculate_condition_image_size(self, image, width, height) -> tuple[int, int]:
-        calculated_width, calculated_height, _ = calculate_dimensions(
-            CONDITION_IMAGE_SIZE, width / height
-        )
-        return calculated_width, calculated_height
+        # Keep the original condition image for prompt encoding. The resized edit
+        # image used by VAE/DiT is already prepared separately via batch.vae_image.
+        return None
 
     def calculate_vae_image_size(self, image, width, height) -> tuple[int, int]:
         calculated_width, calculated_height, _ = calculate_dimensions(
