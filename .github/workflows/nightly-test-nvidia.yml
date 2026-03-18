@@ -580,9 +580,10 @@ jobs:
         env:
           GITHUB_SHA: ${{ github.sha }}
           GITHUB_RUN_ID: ${{ github.run_id }}
+          PYTHONUNBUFFERED: "1"
         timeout-minutes: 150
         run: |
-          python3 -m sglang.multimodal_gen.benchmarks.run_comparison \
+          python3 -u -m sglang.multimodal_gen.benchmarks.run_comparison \
             --output comparison-results.json
 
       - name: Generate dashboard
