@@ -1,4 +1,3 @@
-#!/bin/bash
 # Install comparison frameworks for diffusion benchmarks.
 #
 # IMPORTANT: vllm-omni, lightx2v, and sglang have conflicting torch/dep versions.
