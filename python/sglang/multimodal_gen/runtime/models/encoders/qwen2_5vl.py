@@ -134,10 +134,10 @@ class Qwen2_5_VLAttention(nn.Module):
             num_kv_heads=self.num_key_value_heads,
             softmax_scale=self.scaling,
             causal=True,
-            supported_attention_backends=(
-                AttentionBackendEnum.FA,
-                AttentionBackendEnum.TORCH_SDPA,
-            ),
+            # Qwen-Image text encoder must match the official HF path closely.
+            # FlashAttention changes prompt embeddings measurably on this model,
+            # while Torch SDPA is bit-exact in our single-card validation.
+            supported_attention_backends=(AttentionBackendEnum.TORCH_SDPA,),
         )
 
     def forward(
