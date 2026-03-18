@@ -246,6 +246,7 @@ class TextEncodingStage(PipelineStage):
         pooled_embeds_list: list[torch.Tensor] = []
 
         attn_masks_list: list[torch.Tensor] = []
+        debug_records: list[dict] = []
 
         preprocess_funcs = server_args.pipeline_config.preprocess_text_funcs
         postprocess_funcs = server_args.pipeline_config.postprocess_text_funcs
@@ -296,14 +297,41 @@ class TextEncodingStage(PipelineStage):
                 attention_mask = torch.ones(input_ids.shape[:2], device=target_device)
             else:
                 attention_mask = text_inputs["attention_mask"]
+            encoder_kwargs = {
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "output_hidden_states": True,
+            }
+            if not (
+                _env_flag("SGLANG_TEXT_ENCODING_LEAVE_USE_CACHE_DEFAULT")
+                or isinstance(server_args.pipeline_config, QwenImagePipelineConfig)
+            ):
+                encoder_kwargs["use_cache"] = False
+
             with set_forward_context(current_timestep=0, attn_metadata=None):
-                outputs: BaseEncoderOutput = text_encoder(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    output_hidden_states=True,
-                    use_cache=False,
+                outputs: BaseEncoderOutput = text_encoder(**encoder_kwargs)
+
+            postprocess_out = postprocess_func(outputs, text_inputs)
+            if isinstance(postprocess_out, tuple):
+                prompt_embeds, attention_mask = postprocess_out
+            else:
+                prompt_embeds = postprocess_out
+
+            if isinstance(server_args.pipeline_config, QwenImagePipelineConfig):
+                debug_records.append(
+                    {
+                        "encoder_index": i,
+                        "processed_text_list": list(processed_text_list),
+                        "input_ids": text_inputs["input_ids"].detach().cpu(),
+                        "text_attention_mask": text_inputs["attention_mask"]
+                        .detach()
+                        .cpu(),
+                        "encoder_kwargs_use_cache": encoder_kwargs.get("use_cache"),
+                        "prompt_embeds": prompt_embeds.detach().cpu(),
+                        "prompt_attention_mask": attention_mask.detach().cpu(),
+                    }
                 )
-            prompt_embeds = postprocess_func(outputs, text_inputs)
+
             if dtype is not None:
                 prompt_embeds = prompt_embeds.to(dtype=dtype)
 
@@ -315,6 +343,14 @@ class TextEncodingStage(PipelineStage):
 
         # Shape results according to return_type
         if return_type == "list":
+            dump_path = os.environ.get("SGLANG_QWEN_TEXT_ENCODING_DEBUG_PATH")
+            if (
+                dump_path
+                and isinstance(server_args.pipeline_config, QwenImagePipelineConfig)
+                and debug_records
+                and not os.path.exists(dump_path)
+            ):
+                torch.save({"records": debug_records}, dump_path)
             if return_attention_mask:
                 return embeds_list, attn_masks_list, pooled_embeds_list
             return embeds_list, pooled_embeds_list
