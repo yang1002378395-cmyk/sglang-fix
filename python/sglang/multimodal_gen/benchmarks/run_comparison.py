@@ -282,8 +282,10 @@ def _get_ref_image_path(config: dict) -> str:
 # ---------------------------------------------------------------------------
 
 
-def send_image_request_sglang(base_url: str, case: dict) -> float:
-    """Send a single T2I request via SGLang's /v1/images/generations."""
+def _build_sglang_payload(
+    case: dict, perf_dump_path: str | None = None
+) -> dict:
+    """Build common SGLang request payload."""
     payload = {
         "model": case["model"],
         "prompt": case["prompt"],
@@ -291,12 +293,32 @@ def send_image_request_sglang(base_url: str, case: dict) -> float:
         "n": 1,
         "response_format": "b64_json",
     }
-    if "num_inference_steps" in case:
-        payload["num_inference_steps"] = case["num_inference_steps"]
-    if "guidance_scale" in case:
-        payload["guidance_scale"] = case["guidance_scale"]
-    if "seed" in case:
-        payload["seed"] = case["seed"]
+    for key in ("num_inference_steps", "guidance_scale", "seed", "num_frames"):
+        if key in case:
+            payload[key] = case[key]
+    if perf_dump_path:
+        payload["perf_dump_path"] = perf_dump_path
+    return payload
+
+
+def _read_perf_dump(perf_dump_path: str) -> float | None:
+    """Read total_duration_ms from a perf dump JSON file."""
+    try:
+        with open(perf_dump_path) as f:
+            data = json.load(f)
+        total_ms = data.get("total_duration_ms")
+        if total_ms is not None:
+            return total_ms / 1000.0  # convert to seconds
+    except Exception as e:
+        print(f"  Warning: failed to read perf dump {perf_dump_path}: {e}")
+    return None
+
+
+def send_image_request_sglang(
+    base_url: str, case: dict, perf_dump_path: str | None = None
+) -> float:
+    """Send a single T2I request via SGLang's /v1/images/generations."""
+    payload = _build_sglang_payload(case, perf_dump_path)
 
     start = time.time()
     resp = requests.post(
@@ -304,27 +326,30 @@ def send_image_request_sglang(base_url: str, case: dict) -> float:
         json=payload,
         timeout=REQUEST_TIMEOUT,
     )
-    latency = time.time() - start
+    client_latency = time.time() - start
     resp.raise_for_status()
     data = resp.json()
     if "data" not in data or len(data["data"]) == 0:
         raise RuntimeError(f"Image request returned no data: {data}")
-    print(f"  Image generated in {latency:.2f}s")
-    return latency
+
+    # Prefer server-side perf dump over client-side timing
+    if perf_dump_path:
+        server_latency = _read_perf_dump(perf_dump_path)
+        if server_latency is not None:
+            print(
+                f"  Image generated in {server_latency:.2f}s (server-side), "
+                f"client={client_latency:.2f}s"
+            )
+            return server_latency
+    print(f"  Image generated in {client_latency:.2f}s")
+    return client_latency
 
 
-def send_video_request_sglang(base_url: str, case: dict) -> float:
+def send_video_request_sglang(
+    base_url: str, case: dict, perf_dump_path: str | None = None
+) -> float:
     """Send a single T2V request via SGLang's /v1/videos/generations (async)."""
-    payload = {
-        "model": case["model"],
-        "prompt": case["prompt"],
-        "size": f"{case['width']}x{case['height']}",
-        "n": 1,
-        "response_format": "b64_json",
-    }
-    for key in ("num_frames", "num_inference_steps", "guidance_scale", "seed"):
-        if key in case:
-            payload[key] = case[key]
+    payload = _build_sglang_payload(case, perf_dump_path)
 
     start = time.time()
 
@@ -355,13 +380,22 @@ def send_video_request_sglang(base_url: str, case: dict) -> float:
         if time.time() - start > REQUEST_TIMEOUT:
             raise TimeoutError(f"Video generation timed out after {REQUEST_TIMEOUT}s")
 
-    latency = time.time() - start
-    print(f"  Video generated in {latency:.2f}s")
-    return latency
+    client_latency = time.time() - start
+
+    if perf_dump_path:
+        server_latency = _read_perf_dump(perf_dump_path)
+        if server_latency is not None:
+            print(
+                f"  Video generated in {server_latency:.2f}s (server-side), "
+                f"client={client_latency:.2f}s"
+            )
+            return server_latency
+    print(f"  Video generated in {client_latency:.2f}s")
+    return client_latency
 
 
 def send_image_conditioned_request_sglang(
-    base_url: str, case: dict, config: dict
+    base_url: str, case: dict, config: dict, perf_dump_path: str | None = None
 ) -> float:
     """Send an image-conditioned request (edit/I2V/TI2V) via SGLang multipart API."""
     task = case["task"]
@@ -379,6 +413,8 @@ def send_image_conditioned_request_sglang(
     for key in ("num_inference_steps", "guidance_scale", "seed", "num_frames"):
         if key in case:
             data[key] = str(case[key])
+    if perf_dump_path:
+        data["perf_dump_path"] = perf_dump_path
 
     # Choose endpoint based on task
     if task in ("image-edit", "image-to-image"):
@@ -419,9 +455,18 @@ def send_image_conditioned_request_sglang(
     else:
         resp.raise_for_status()
 
-    latency = time.time() - start
-    print(f"  Generated in {latency:.2f}s (sglang, image-conditioned)")
-    return latency
+    client_latency = time.time() - start
+
+    if perf_dump_path:
+        server_latency = _read_perf_dump(perf_dump_path)
+        if server_latency is not None:
+            print(
+                f"  Generated in {server_latency:.2f}s (server-side), "
+                f"client={client_latency:.2f}s"
+            )
+            return server_latency
+    print(f"  Generated in {client_latency:.2f}s (sglang, image-conditioned)")
+    return client_latency
 
 
 # ---------------------------------------------------------------------------
@@ -550,20 +595,23 @@ def send_request(
     case: dict,
     framework: str = "sglang",
     config: dict | None = None,
+    perf_dump_path: str | None = None,
 ) -> float:
     config = config or {}
     if framework == "vllm-omni":
         return send_request_vllm_omni(base_url, case, config)
     elif framework == "lightx2v":
         return send_request_lightx2v(base_url, case, config)
-    # SGLang — use OpenAI-compatible endpoints
+    # SGLang — use OpenAI-compatible endpoints with optional perf dump
     task = case["task"]
     if case.get("reference_image"):
-        return send_image_conditioned_request_sglang(base_url, case, config)
+        return send_image_conditioned_request_sglang(
+            base_url, case, config, perf_dump_path
+        )
     elif task == "text-to-image":
-        return send_image_request_sglang(base_url, case)
+        return send_image_request_sglang(base_url, case, perf_dump_path)
     elif task == "text-to-video":
-        return send_video_request_sglang(base_url, case)
+        return send_video_request_sglang(base_url, case, perf_dump_path)
     else:
         raise ValueError(f"Unknown task type: {task}")
 
@@ -632,16 +680,28 @@ def run_single(
         base_url = f"http://{DEFAULT_HOST}:{port}"
         wait_for_health(base_url, framework)
 
-        # Warmup request (not measured)
+        # Warmup request (not measured, no perf dump)
         print("  Sending warmup request...")
         try:
             send_request(base_url, case, framework, config)
         except Exception as e:
             print(f"  Warmup request failed (non-fatal): {e}")
 
-        # Measured request
+        # Measured request — use perf_dump_path for SGLang server-side timing
+        perf_path = None
+        if framework == "sglang":
+            perf_path = os.path.join(
+                tempfile.gettempdir(),
+                f"comparison_perf_{case['id']}.json",
+            )
+            # Remove stale dump from warmup
+            if os.path.exists(perf_path):
+                os.remove(perf_path)
+
         print("  Sending measured request...")
-        latency = send_request(base_url, case, framework, config)
+        latency = send_request(
+            base_url, case, framework, config, perf_dump_path=perf_path
+        )
         result["latency_s"] = round(latency, 3)
 
     except Exception as e:
