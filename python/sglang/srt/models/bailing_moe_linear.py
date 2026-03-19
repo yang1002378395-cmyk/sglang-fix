@@ -96,12 +96,12 @@ if _use_aiter_gfx95:
 
 if _is_cuda:
     from sgl_kernel import awq_dequantize
-
 elif _is_cpu and _is_cpu_amx_available:
     pass
 elif _is_hip:
-    pass
-
+    from sglang.srt.layers.quantization.awq_triton import (
+        awq_dequantize_triton as awq_dequantize,
+    )
 else:
     from vllm._custom_ops import awq_dequantize
 
