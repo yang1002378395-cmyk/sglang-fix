@@ -24,10 +24,7 @@ if TYPE_CHECKING:
 
 _is_cuda = is_cuda()
 if _is_cuda:
-    from sgl_kernel import (
-        cutlass_mla_decode,
-        cutlass_mla_get_workspace_size,
-    )
+    from sgl_kernel import cutlass_mla_decode, cutlass_mla_get_workspace_size
 
 # Cutlass MLA only supports pagesize=128
 PAGE_SIZE = 128

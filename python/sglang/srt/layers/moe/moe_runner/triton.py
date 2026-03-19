@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         StandardDispatchOutput,
     )
 
+
 _is_hip = is_hip()
 _is_cuda = is_cuda()
 _is_cpu_amx_available = cpu_has_amx_support()
@@ -34,6 +35,7 @@ _is_cpu = is_cpu()
 _use_aiter = bool(int(os.getenv("SGLANG_USE_AITER", "0")))
 _is_xpu = is_xpu()
 _MOE_PADDING_SIZE = 128 if bool(int(os.getenv("SGLANG_MOE_PADDING", "0"))) else 0
+
 
 if _is_cuda or _is_hip:
     from sgl_kernel import gelu_and_mul, silu_and_mul
@@ -60,9 +62,10 @@ elif _is_cpu and _is_cpu_amx_available:
 elif _is_xpu:
     from sgl_kernel import moe_sum_reduce, silu_and_mul
 
+
 if _is_cuda or _is_hip or _is_xpu:
     from sgl_kernel import (  # noqa: F401
-        moe_align_block_size as _sgl_moe_align_block_size,
+        moe_align_block_size as sgl_moe_align_block_size,
     )
 
 

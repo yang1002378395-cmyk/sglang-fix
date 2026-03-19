@@ -63,6 +63,7 @@ def causal_conv1d_fn(
             in this case, the kernel will not process entries at
             indices 0 and 3
 
+
     out: (batch, dim, seqlen)
     """
     if _USE_TRITON:
