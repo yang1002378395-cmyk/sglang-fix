@@ -698,6 +698,29 @@ class DenoisingStage(PipelineStage):
             "guidance": guidance,
         }
 
+    def _gather_sp_tensor_for_dump(
+        self, tensor: torch.Tensor | None, batch: Req, server_args: ServerArgs
+    ) -> torch.Tensor | None:
+        if tensor is None:
+            return None
+        if not (
+            get_sp_world_size() > 1 and getattr(batch, "did_sp_shard_latents", False)
+        ):
+            return tensor
+
+        gathered = server_args.pipeline_config.gather_latents_for_sp(tensor)
+        if gathered.dim() == 4:
+            gathered = sequence_model_parallel_all_gather(
+                gathered.contiguous(), dim=2
+            )
+            if getattr(batch, "_zimage_sp_swap_hw", False):
+                gathered = gathered.transpose(2, 3).contiguous()
+        if hasattr(batch, "raw_latent_shape") and gathered.dim() == 3:
+            orig_s = batch.raw_latent_shape[1]
+            if gathered.shape[1] > orig_s:
+                gathered = gathered[:, :orig_s, :]
+        return gathered
+
     def _post_denoising_loop(
         self,
         batch: Req,
@@ -1422,13 +1445,25 @@ class DenoisingStage(PipelineStage):
                     noise_pred_cond, latents
                 )
                 if timestep_index == 0:
+                    dump_value("noise_pred_cond_step0", noise_pred_cond, batch=batch)
                     dump_value(
-                        "noise_pred_cond_step0", noise_pred_cond, batch=batch
+                        "noise_pred_cond_step0_full",
+                        self._gather_sp_tensor_for_dump(
+                            noise_pred_cond, batch, server_args
+                        ),
+                        batch=batch,
                     )
         if not batch.do_classifier_free_guidance:
             # If CFG is disabled, we are done. Return the conditional prediction.
             if timestep_index == 0:
                 dump_value("noise_pred_step0", noise_pred_cond, batch=batch)
+                dump_value(
+                    "noise_pred_step0_full",
+                    self._gather_sp_tensor_for_dump(
+                        noise_pred_cond, batch, server_args
+                    ),
+                    batch=batch,
+                )
             return noise_pred_cond
 
         # negative pass
@@ -1454,6 +1489,13 @@ class DenoisingStage(PipelineStage):
                 if timestep_index == 0:
                     dump_value(
                         "noise_pred_uncond_step0", noise_pred_uncond, batch=batch
+                    )
+                    dump_value(
+                        "noise_pred_uncond_step0_full",
+                        self._gather_sp_tensor_for_dump(
+                            noise_pred_uncond, batch, server_args
+                        ),
+                        batch=batch,
                     )
 
         # Combine predictions
@@ -1515,15 +1557,18 @@ class DenoisingStage(PipelineStage):
                 )
                 if cfg_rank == 0:
                     assert noise_pred_cond is not None
-                    cond_norm = torch.norm(
-                        noise_pred_cond, dim=-1, keepdim=True
-                    )
+                    cond_norm = torch.norm(noise_pred_cond, dim=-1, keepdim=True)
                 else:
                     cond_norm = torch.empty_like(noise_norm)
                 cond_norm = get_cfg_group().broadcast(cond_norm, src=0)
                 noise_pred = noise_pred * (cond_norm / noise_norm)
             if timestep_index == 0:
                 dump_value("noise_pred_step0", noise_pred, batch=batch)
+                dump_value(
+                    "noise_pred_step0_full",
+                    self._gather_sp_tensor_for_dump(noise_pred, batch, server_args),
+                    batch=batch,
+                )
             return noise_pred
         else:
             # Serial CFG: both cond and uncond are available locally
@@ -1553,6 +1598,11 @@ class DenoisingStage(PipelineStage):
                 noise_pred = self.match_noise_pred_norm(noise_pred, noise_pred_cond)
             if timestep_index == 0:
                 dump_value("noise_pred_step0", noise_pred, batch=batch)
+                dump_value(
+                    "noise_pred_step0_full",
+                    self._gather_sp_tensor_for_dump(noise_pred, batch, server_args),
+                    batch=batch,
+                )
             return noise_pred
 
     def prepare_sta_param(self, batch: Req, server_args: ServerArgs):

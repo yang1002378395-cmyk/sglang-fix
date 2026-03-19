@@ -250,7 +250,11 @@ class GPUWorker:
                     "after_forward", peak_snapshot
                 )
 
-            if self.rank == 0 and not req.suppress_logs and logger.isEnabledFor(logging.DEBUG):
+            if (
+                self.rank == 0
+                and not req.suppress_logs
+                and logger.isEnabledFor(logging.DEBUG)
+            ):
                 self.do_mem_analysis(output_batch)
 
             duration_ms = (time.monotonic() - start_time) * 1000

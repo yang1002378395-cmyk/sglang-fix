@@ -161,7 +161,9 @@ class QwenImagePipelineConfig(ImagePipelineConfig):
         if prompt:
             prompt_template_encode = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n"
             prompt_list = _normalize_prompt_list(prompt)
-            txt = [prompt_template_encode.format(cur_prompt) for cur_prompt in prompt_list]
+            txt = [
+                prompt_template_encode.format(cur_prompt) for cur_prompt in prompt_list
+            ]
             return dict(text=txt, padding=True)
         else:
             return {}
@@ -325,9 +327,12 @@ class QwenImageEditPipelineConfig(QwenImagePipelineConfig):
 
         img_cache, txt_cache = freqs_cis
         noisy_img_cache = shard_rotary_emb_for_sp(img_cache[:noisy_img_seq_len, :])
-        img_cache = torch.cat(
-            [noisy_img_cache, img_cache[noisy_img_seq_len:, :]], dim=0
-        ).to(device=device)
+        condition_img_cache = shard_rotary_emb_for_sp(
+            img_cache[noisy_img_seq_len:, :]
+        )
+        img_cache = torch.cat([noisy_img_cache, condition_img_cache], dim=0).to(
+            device=device
+        )
         return {
             "txt_seq_lens": txt_seq_lens,
             "freqs_cis": (img_cache, txt_cache),
@@ -516,9 +521,12 @@ class QwenImageEditPlusPipelineConfig(QwenImageEditPipelineConfig):
         if isinstance(freqs_cis[0], torch.Tensor) and freqs_cis[0].dim() == 2:
             img_cache, txt_cache = freqs_cis
             noisy_img_cache = shard_rotary_emb_for_sp(img_cache[:noisy_img_seq_len, :])
-            img_cache = torch.cat(
-                [noisy_img_cache, img_cache[noisy_img_seq_len:, :]], dim=0
-            ).to(device=device)
+            condition_img_cache = shard_rotary_emb_for_sp(
+                img_cache[noisy_img_seq_len:, :]
+            )
+            img_cache = torch.cat([noisy_img_cache, condition_img_cache], dim=0).to(
+                device=device
+            )
             return {
                 "txt_seq_lens": txt_seq_lens,
                 "freqs_cis": (img_cache, txt_cache),
@@ -528,12 +536,13 @@ class QwenImageEditPlusPipelineConfig(QwenImageEditPipelineConfig):
         (img_cos, img_sin), (txt_cos, txt_sin) = freqs_cis
         noisy_img_cos = shard_rotary_emb_for_sp(img_cos[:noisy_img_seq_len, :])
         noisy_img_sin = shard_rotary_emb_for_sp(img_sin[:noisy_img_seq_len, :])
+        condition_img_cos = shard_rotary_emb_for_sp(img_cos[noisy_img_seq_len:, :])
+        condition_img_sin = shard_rotary_emb_for_sp(img_sin[noisy_img_seq_len:, :])
 
-        # concat back the img_cos for input image (since it is not sp-shared later)
-        img_cos = torch.cat([noisy_img_cos, img_cos[noisy_img_seq_len:, :]], dim=0).to(
+        img_cos = torch.cat([noisy_img_cos, condition_img_cos], dim=0).to(
             device=device
         )
-        img_sin = torch.cat([noisy_img_sin, img_sin[noisy_img_seq_len:, :]], dim=0).to(
+        img_sin = torch.cat([noisy_img_sin, condition_img_sin], dim=0).to(
             device=device
         )
 

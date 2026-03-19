@@ -64,8 +64,8 @@ import torch
 import torch.nn as nn
 from transformers.activations import ACT2FN
 from transformers.models.qwen2_5_vl.modeling_qwen2_5_vl import (
-    Qwen2_5_VisionTransformerPretrainedModel,
     Qwen2_5_VisionRotaryEmbedding,
+    Qwen2_5_VisionTransformerPretrainedModel,
     Qwen2_5_VLAttention,
     Qwen2_5_VLCausalLMOutputWithPast,
     Qwen2_5_VLModelOutputWithPast,
@@ -517,7 +517,9 @@ class Qwen2_5_VLModel(nn.Module):
             )
             self.visual.to(torch.get_default_dtype())
             # HF keeps the vision rotary frequencies in fp32 even when weights are bf16.
-            head_dim = config.vision_config.hidden_size // config.vision_config.num_heads
+            head_dim = (
+                config.vision_config.hidden_size // config.vision_config.num_heads
+            )
             rotary_dim = head_dim // 2
             inv_freq = Qwen2_5_VisionRotaryEmbedding(rotary_dim).inv_freq
             self.visual.rotary_pos_emb.register_buffer(

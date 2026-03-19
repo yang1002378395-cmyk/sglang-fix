@@ -197,9 +197,7 @@ class ImageEncodingStage(PipelineStage):
 
         dump_request_metadata(batch)
         dump_value("prompt_embeds", batch.prompt_embeds[:1], batch=batch)
-        dump_value(
-            "negative_prompt_embeds", batch.negative_prompt_embeds, batch=batch
-        )
+        dump_value("negative_prompt_embeds", batch.negative_prompt_embeds, batch=batch)
 
         self.offload_model()
 
