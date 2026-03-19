@@ -94,14 +94,15 @@ _device_sm = get_device_sm()
 
 if _is_cuda:
     from sgl_kernel import awq_dequantize
-
 elif _is_cpu and _is_cpu_amx_available:
     pass
 elif _is_hip:
-    pass
-
+    from sglang.srt.layers.quantization.awq_triton import (
+        awq_dequantize_triton as awq_dequantize,
+    )
 else:
     pass
+
 
 logger = logging.getLogger(__name__)
 
