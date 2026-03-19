@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 import torch
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import cache_once, load_jit, make_cpp_args
 
 if TYPE_CHECKING:
@@ -113,3 +114,8 @@ def gptq_marlin_gemm(
     )
 
     return c
+
+
+gptq_marlin_gemm = maybe_wrap_jit_kernel_sglang_debug(
+    gptq_marlin_gemm, "jit_kernel.gptq_marlin.gptq_marlin_gemm"
+)

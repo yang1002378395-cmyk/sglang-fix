@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import (
     cache_once,
     is_arch_support_pdl,
@@ -101,3 +102,8 @@ def fused_store_index_k_cache(
 
     module = _jit_nsa_fused_store_module(key.dtype, out_cache_loc.dtype, page_size)
     module.fused_store_index_k_cache(key, index_k_with_scale, out_cache_loc)
+
+
+fused_store_index_k_cache = maybe_wrap_jit_kernel_sglang_debug(
+    fused_store_index_k_cache, "jit_kernel.fused_store_index_k_cache"
+)

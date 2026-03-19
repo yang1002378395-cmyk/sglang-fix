@@ -2,6 +2,8 @@ import torch
 import triton  # type: ignore
 import triton.language as tl  # type: ignore
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
+
 
 # Adapted from https://github.com/ModelTC/LightX2V/blob/main/lightx2v/common/ops/norm/triton_ops.py#L905-L956
 @triton.jit
@@ -64,3 +66,8 @@ if current_platform.is_mps():
     from .mps_fallback import triton_one_pass_rms_norm_native
 
     triton_one_pass_rms_norm = triton_one_pass_rms_norm_native
+
+
+triton_one_pass_rms_norm = maybe_wrap_jit_kernel_sglang_debug(
+    triton_one_pass_rms_norm, "jit_kernel.diffusion.triton.rmsnorm_onepass"
+)

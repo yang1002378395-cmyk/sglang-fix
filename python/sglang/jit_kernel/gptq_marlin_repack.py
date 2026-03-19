@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import cache_once, load_jit
 
 if TYPE_CHECKING:
@@ -41,3 +42,8 @@ def gptq_marlin_repack(
     module = _jit_gptq_marlin_repack_module()
     module.gptq_marlin_repack(b_q_weight, perm, out, size_k, size_n, num_bits)
     return out
+
+
+gptq_marlin_repack = maybe_wrap_jit_kernel_sglang_debug(
+    gptq_marlin_repack, "jit_kernel.gptq_marlin_repack"
+)

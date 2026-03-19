@@ -5,6 +5,8 @@ import triton  # type: ignore
 import triton.language as tl  # type: ignore
 from torch import Tensor
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
+
 
 # RMSNorm-fp32
 def maybe_contiguous_lastdim(x):
@@ -627,3 +629,14 @@ if current_platform.is_mps():
 
     norm_infer = norm_infer_native
     rms_norm_fn = rms_norm_fn_native
+
+
+layer_norm_fn = maybe_wrap_jit_kernel_sglang_debug(
+    layer_norm_fn, "jit_kernel.diffusion.triton.layer_norm_fn"
+)
+norm_infer = maybe_wrap_jit_kernel_sglang_debug(
+    norm_infer, "jit_kernel.diffusion.triton.norm_infer"
+)
+rms_norm_fn = maybe_wrap_jit_kernel_sglang_debug(
+    rms_norm_fn, "jit_kernel.diffusion.triton.rms_norm_fn"
+)

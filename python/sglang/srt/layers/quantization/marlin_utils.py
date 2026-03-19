@@ -10,7 +10,6 @@ from typing import TYPE_CHECKING, Any, Optional
 import numpy
 import torch
 
-from sglang.api_logging import sglang_debug_api
 from sglang.srt.layers.parameter import (
     BasevLLMParameter,
     ChannelQuantScaleParameter,
@@ -44,11 +43,7 @@ except ImportError:
 _is_cuda = is_cuda()
 
 if _is_cuda:
-    from sglang.jit_kernel.gptq_marlin import gptq_marlin_gemm as _gptq_marlin_gemm
-
-    @sglang_debug_api(op_name="jit_kernel.gptq_marlin.gptq_marlin_gemm")
-    def gptq_marlin_gemm(*args, **kwargs):
-        return _gptq_marlin_gemm(*args, **kwargs)
+    from sglang.jit_kernel.gptq_marlin import gptq_marlin_gemm
 
 
 logger = logging.getLogger(__name__)

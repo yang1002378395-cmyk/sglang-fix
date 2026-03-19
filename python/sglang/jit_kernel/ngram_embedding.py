@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import cache_once, load_jit
 
 if TYPE_CHECKING:
@@ -97,3 +98,11 @@ def update_token_table(
         req_lens,
         ignore_tokens,
     )
+
+
+compute_n_gram_ids = maybe_wrap_jit_kernel_sglang_debug(
+    compute_n_gram_ids, "jit_kernel.ngram_embedding.compute_n_gram_ids"
+)
+update_token_table = maybe_wrap_jit_kernel_sglang_debug(
+    update_token_table, "jit_kernel.ngram_embedding.update_token_table"
+)

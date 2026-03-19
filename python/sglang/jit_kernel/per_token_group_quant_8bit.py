@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import cache_once, load_jit, make_cpp_args
 from sglang.srt.utils.custom_op import register_custom_op
 
@@ -93,3 +94,8 @@ def per_token_group_quant_8bit(
         scale_ue8m0=scale_ue8m0,
     )
     return output_q, output_s
+
+
+per_token_group_quant_8bit = maybe_wrap_jit_kernel_sglang_debug(
+    per_token_group_quant_8bit, "jit_kernel.per_token_group_quant_8bit"
+)

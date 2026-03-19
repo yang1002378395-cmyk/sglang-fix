@@ -11,7 +11,6 @@ import triton
 import triton.language as tl
 from huggingface_hub import snapshot_download
 
-from sglang.api_logging import sglang_debug_api
 from sglang.srt.constrained.base_grammar_backend import BaseGrammarObject
 from sglang.srt.distributed.parallel_state import (
     GroupCoordinator,
@@ -30,27 +29,16 @@ _is_npu = is_npu()
 if TYPE_CHECKING:
     from sglang.srt.speculative.eagle_info import EagleVerifyInput
 
-
 if _is_cuda:
-    from sgl_kernel import fast_topk as _fast_topk
-
-    @sglang_debug_api(op_name="sgl_kernel.fast_topk")
-    def fast_topk(*args, **kwargs):
-        return _fast_topk(*args, **kwargs)
+    from sgl_kernel import fast_topk
 
 elif _is_hip:
-    from sgl_kernel import fast_topk as _fast_topk
-
-    @sglang_debug_api(op_name="sgl_kernel.fast_topk")
-    def fast_topk(*args, **kwargs):
-        return _fast_topk(*args, **kwargs)
+    from sgl_kernel import fast_topk
 
 else:
     from sglang.srt.utils.common import fast_topk
 
-
 logger = logging.getLogger(__name__)
-
 
 # Simulate acceptance length for benchmarking purposes
 SIMULATE_ACC_LEN = envs.SGLANG_SIMULATE_ACC_LEN.get()  # turn off if < 0

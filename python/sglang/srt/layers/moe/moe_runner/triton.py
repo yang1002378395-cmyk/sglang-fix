@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, List, Optional
 import torch
 import triton.language as tl
 
-from sglang.api_logging import sglang_debug_api
 from sglang.srt.layers.moe.moe_runner.base import (
     MoeQuantInfo,
     MoeRunnerConfig,
@@ -28,7 +27,6 @@ if TYPE_CHECKING:
         StandardDispatchOutput,
     )
 
-
 _is_hip = is_hip()
 _is_cuda = is_cuda()
 _is_cpu_amx_available = cpu_has_amx_support()
@@ -37,18 +35,8 @@ _use_aiter = bool(int(os.getenv("SGLANG_USE_AITER", "0")))
 _is_xpu = is_xpu()
 _MOE_PADDING_SIZE = 128 if bool(int(os.getenv("SGLANG_MOE_PADDING", "0"))) else 0
 
-
 if _is_cuda or _is_hip:
-    from sgl_kernel import gelu_and_mul as _gelu_and_mul
-    from sgl_kernel import silu_and_mul as _silu_and_mul
-
-    @sglang_debug_api(op_name="sgl_kernel.gelu_and_mul")
-    def gelu_and_mul(*args, **kwargs):
-        return _gelu_and_mul(*args, **kwargs)
-
-    @sglang_debug_api(op_name="sgl_kernel.silu_and_mul")
-    def silu_and_mul(*args, **kwargs):
-        return _silu_and_mul(*args, **kwargs)
+    from sgl_kernel import gelu_and_mul, silu_and_mul
 
     if _is_hip:
         _has_vllm = False
@@ -70,26 +58,12 @@ if _is_cuda or _is_hip:
 elif _is_cpu and _is_cpu_amx_available:
     pass
 elif _is_xpu:
-    from sgl_kernel import moe_sum_reduce as _moe_sum_reduce
-    from sgl_kernel import silu_and_mul as _silu_and_mul
-
-    @sglang_debug_api(op_name="sgl_kernel.moe_sum_reduce")
-    def moe_sum_reduce(*args, **kwargs):
-        return _moe_sum_reduce(*args, **kwargs)
-
-    @sglang_debug_api(op_name="sgl_kernel.silu_and_mul")
-    def silu_and_mul(*args, **kwargs):
-        return _silu_and_mul(*args, **kwargs)
-
+    from sgl_kernel import moe_sum_reduce, silu_and_mul
 
 if _is_cuda or _is_hip or _is_xpu:
     from sgl_kernel import (  # noqa: F401
         moe_align_block_size as _sgl_moe_align_block_size,
     )
-
-    @sglang_debug_api(op_name="sgl_kernel.moe_align_block_size")
-    def sgl_moe_align_block_size(*args, **kwargs):
-        return _sgl_moe_align_block_size(*args, **kwargs)
 
 
 @dataclass

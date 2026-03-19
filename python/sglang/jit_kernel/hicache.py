@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import cache_once, load_jit, make_cpp_args
 
 if TYPE_CHECKING:
@@ -136,3 +137,11 @@ def transfer_hicache_all_layer(
         kv_cache_src_stride_bytes,
         kv_cache_dst_stride_bytes,
     )
+
+
+transfer_hicache_one_layer = maybe_wrap_jit_kernel_sglang_debug(
+    transfer_hicache_one_layer, "jit_kernel.hicache.transfer_hicache_one_layer"
+)
+transfer_hicache_all_layer = maybe_wrap_jit_kernel_sglang_debug(
+    transfer_hicache_all_layer, "jit_kernel.hicache.transfer_hicache_all_layer"
+)

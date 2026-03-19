@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import cache_once, load_jit
 
 if TYPE_CHECKING:
@@ -54,3 +55,11 @@ def awq_marlin_moe_repack(
     for e in range(num_experts):
         output[e] = awq_marlin_repack(b_q_weight[e], size_k, size_n, num_bits)
     return output
+
+
+awq_marlin_repack = maybe_wrap_jit_kernel_sglang_debug(
+    awq_marlin_repack, "jit_kernel.awq_marlin_repack"
+)
+awq_marlin_moe_repack = maybe_wrap_jit_kernel_sglang_debug(
+    awq_marlin_moe_repack, "jit_kernel.awq_marlin_moe_repack"
+)

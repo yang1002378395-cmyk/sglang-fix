@@ -8,21 +8,11 @@ from typing import Optional
 
 import torch
 
-from sglang.api_logging import sglang_debug_api
-
 from .causal_conv1d_triton import PAD_SLOT_ID
 
 try:
-    from sgl_kernel import causal_conv1d_fwd as _causal_conv1d_fwd
-    from sgl_kernel import causal_conv1d_update as _causal_conv1d_update_kernel
-
-    @sglang_debug_api(op_name="sgl_kernel.causal_conv1d_fwd")
-    def causal_conv1d_fwd(*args, **kwargs):
-        return _causal_conv1d_fwd(*args, **kwargs)
-
-    @sglang_debug_api(op_name="sgl_kernel.causal_conv1d_update")
-    def causal_conv1d_update_kernel(*args, **kwargs):
-        return _causal_conv1d_update_kernel(*args, **kwargs)
+    from sgl_kernel import causal_conv1d_fwd
+    from sgl_kernel import causal_conv1d_update as causal_conv1d_update_kernel
 
     torch.ops.sgl_kernel.causal_conv1d_update
     _USE_TRITON = False
@@ -72,7 +62,6 @@ def causal_conv1d_fn(
             for example: cache_indices = [pad_slot_id, 1, 20, pad_slot_id]
             in this case, the kernel will not process entries at
             indices 0 and 3
-
 
     out: (batch, dim, seqlen)
     """

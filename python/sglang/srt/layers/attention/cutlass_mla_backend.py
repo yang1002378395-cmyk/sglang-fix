@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Optional, Union
 import torch
 import triton
 
-from sglang.api_logging import sglang_debug_api
 from sglang.srt.layers.attention.flashinfer_mla_backend import FlashInferMLAAttnBackend
 from sglang.srt.layers.attention.utils import create_flashmla_kv_indices_triton
 from sglang.srt.layers.dp_attention import get_attention_tp_size
@@ -25,19 +24,10 @@ if TYPE_CHECKING:
 
 _is_cuda = is_cuda()
 if _is_cuda:
-    from sgl_kernel import cutlass_mla_decode as _cutlass_mla_decode
     from sgl_kernel import (
-        cutlass_mla_get_workspace_size as _cutlass_mla_get_workspace_size,
+        cutlass_mla_decode,
+        cutlass_mla_get_workspace_size,
     )
-
-    @sglang_debug_api(op_name="sgl_kernel.cutlass_mla_decode")
-    def cutlass_mla_decode(*args, **kwargs):
-        return _cutlass_mla_decode(*args, **kwargs)
-
-    @sglang_debug_api(op_name="sgl_kernel.cutlass_mla_get_workspace_size")
-    def cutlass_mla_get_workspace_size(*args, **kwargs):
-        return _cutlass_mla_get_workspace_size(*args, **kwargs)
-
 
 # Cutlass MLA only supports pagesize=128
 PAGE_SIZE = 128

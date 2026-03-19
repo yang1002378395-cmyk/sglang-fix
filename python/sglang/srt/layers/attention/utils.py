@@ -2,7 +2,6 @@ import torch
 import triton
 import triton.language as tl
 
-from sglang.api_logging import sglang_debug_api
 from sglang.srt.utils import is_cuda
 
 _FLASHMLA_CREATE_KV_BLOCK_SIZE = 4096
@@ -11,11 +10,7 @@ FLASHMLA_CREATE_KV_BLOCK_SIZE_TRITON = tl.constexpr(_FLASHMLA_CREATE_KV_BLOCK_SI
 _is_cuda = is_cuda()
 
 if _is_cuda:
-    from sgl_kernel import concat_mla_absorb_q as _concat_mla_absorb_q
-
-    @sglang_debug_api(op_name="sgl_kernel.concat_mla_absorb_q")
-    def concat_mla_absorb_q(*args, **kwargs):
-        return _concat_mla_absorb_q(*args, **kwargs)
+    from sgl_kernel import concat_mla_absorb_q
 
 
 @triton.jit

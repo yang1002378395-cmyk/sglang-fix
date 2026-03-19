@@ -2,6 +2,7 @@ from functools import lru_cache
 from typing import Optional, Union
 
 import torch
+from sgl_kernel.debug_utils import maybe_wrap_sglang_debug
 
 try:
     from sgl_kernel import flash_ops
@@ -309,3 +310,13 @@ def flash_attn_varlen_func(
     )
 
     return (out, softmax_lse, *rest) if return_softmax_lse else out
+
+
+flash_attn_with_kvcache = maybe_wrap_sglang_debug(
+    flash_attn_with_kvcache,
+    "sgl_kernel.flash_attn.flash_attn_with_kvcache",
+)
+flash_attn_varlen_func = maybe_wrap_sglang_debug(
+    flash_attn_varlen_func,
+    "sgl_kernel.flash_attn.flash_attn_varlen_func",
+)

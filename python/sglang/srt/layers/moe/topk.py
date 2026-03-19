@@ -31,8 +31,6 @@ from typing import (
 import torch
 import torch.nn.functional as F
 
-from sglang.api_logging import sglang_debug_api
-
 try:
     from triton_kernels.routing import GatherIndx, RoutingData, ScatterIndx, routing
 except ImportError:
@@ -67,7 +65,6 @@ from sglang.srt.utils.patch_torch import register_fake_if_exists
 if TYPE_CHECKING:
     from sglang.srt.layers.quantization import QuantizationConfig
 
-
 logger = logging.getLogger(__name__)
 _is_cuda = is_cuda()
 _is_hip = is_hip()
@@ -79,11 +76,7 @@ _is_xpu = is_xpu()
 _use_aiter = get_bool_env_var("SGLANG_USE_AITER") and _is_hip
 
 if _is_cuda:
-    from sgl_kernel import moe_fused_gate as _moe_fused_gate
-
-    @sglang_debug_api(op_name="sgl_kernel.moe_fused_gate")
-    def moe_fused_gate(*args, **kwargs):
-        return _moe_fused_gate(*args, **kwargs)
+    from sgl_kernel import moe_fused_gate
 
     try:
         from flashinfer.fused_moe import fused_topk_deepseek as _fused_topk_deepseek
@@ -121,28 +114,16 @@ if _is_cuda:
         fused_topk_deepseek = None
 
     try:
-        from sgl_kernel import kimi_k2_moe_fused_gate as _kimi_k2_moe_fused_gate
-
-        @sglang_debug_api(op_name="sgl_kernel.kimi_k2_moe_fused_gate")
-        def kimi_k2_moe_fused_gate(*args, **kwargs):
-            return _kimi_k2_moe_fused_gate(*args, **kwargs)
+        from sgl_kernel import kimi_k2_moe_fused_gate
 
     except ImportError as e:
         pass
 
 if _is_cuda or _is_hip or _is_xpu:
-    from sgl_kernel import topk_softmax as _topk_softmax
-
-    @sglang_debug_api(op_name="sgl_kernel.topk_softmax")
-    def topk_softmax(*args, **kwargs):
-        return _topk_softmax(*args, **kwargs)
+    from sgl_kernel import topk_softmax
 
     try:
-        from sgl_kernel import topk_sigmoid as _topk_sigmoid
-
-        @sglang_debug_api(op_name="sgl_kernel.topk_sigmoid")
-        def topk_sigmoid(*args, **kwargs):
-            return _topk_sigmoid(*args, **kwargs)
+        from sgl_kernel import topk_sigmoid
 
     except ImportError:
         pass

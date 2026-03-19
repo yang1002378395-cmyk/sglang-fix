@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import cache_once, load_jit, make_cpp_args
 
 if TYPE_CHECKING:
@@ -44,3 +45,8 @@ def timestep_embedding(
         int(max_period),
     )
     return output
+
+
+timestep_embedding = maybe_wrap_jit_kernel_sglang_debug(
+    timestep_embedding, "jit_kernel.timestep_embedding.timestep_embedding"
+)

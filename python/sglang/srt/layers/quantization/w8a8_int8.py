@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, cast
 import torch
 from torch.nn.parameter import Parameter
 
-from sglang.api_logging import sglang_debug_api
 from sglang.srt.distributed import get_tensor_model_parallel_world_size
 from sglang.srt.layers.amx_utils import (
     CPUQuantMethod,
@@ -42,11 +41,7 @@ _is_cpu_amx_available = cpu_has_amx_support()
 _is_cpu = is_cpu()
 
 if _is_cuda:
-    from sgl_kernel import int8_scaled_mm as _int8_scaled_mm
-
-    @sglang_debug_api(op_name="sgl_kernel.int8_scaled_mm")
-    def int8_scaled_mm(*args, **kwargs):
-        return _int8_scaled_mm(*args, **kwargs)
+    from sgl_kernel import int8_scaled_mm
 
     @register_fake_if_exists("sgl_kernel::int8_scaled_mm")
     def _int8_scaled_mm_abstract(

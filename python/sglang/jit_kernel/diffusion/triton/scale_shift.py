@@ -2,6 +2,7 @@ import torch
 import triton  # type: ignore
 import triton.language as tl  # type: ignore
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.multimodal_gen.runtime.platforms import current_platform
 
 
@@ -844,3 +845,20 @@ if current_platform.is_mps():
 
     fuse_scale_shift_kernel = fuse_scale_shift_kernel_native
     fuse_scale_shift_gate_select01_kernel = fuse_scale_shift_gate_select01_kernel_native
+
+
+fuse_scale_shift_kernel = maybe_wrap_jit_kernel_sglang_debug(
+    fuse_scale_shift_kernel, "jit_kernel.diffusion.triton.fuse_scale_shift_kernel"
+)
+fuse_scale_shift_gate_select01_kernel = maybe_wrap_jit_kernel_sglang_debug(
+    fuse_scale_shift_gate_select01_kernel,
+    "jit_kernel.diffusion.triton.fuse_scale_shift_gate_select01_kernel",
+)
+fuse_layernorm_scale_shift_gate_select01_kernel = maybe_wrap_jit_kernel_sglang_debug(
+    fuse_layernorm_scale_shift_gate_select01_kernel,
+    "jit_kernel.diffusion.triton.fuse_layernorm_scale_shift_gate_select01_kernel",
+)
+fuse_residual_layernorm_scale_shift_gate_select01_kernel = maybe_wrap_jit_kernel_sglang_debug(
+    fuse_residual_layernorm_scale_shift_gate_select01_kernel,
+    "jit_kernel.diffusion.triton.fuse_residual_layernorm_scale_shift_gate_select01_kernel",
+)

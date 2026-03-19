@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import cache_once, load_jit, make_cpp_args
 from sglang.srt.utils.custom_op import register_custom_op
 
@@ -43,3 +44,8 @@ def per_tensor_quant_fp8(
     """
     module = _jit_per_tensor_quant_fp8_module(is_static, input.dtype)
     module.per_tensor_quant_fp8(input.view(-1), output_q.view(-1), output_s.view(-1))
+
+
+per_tensor_quant_fp8 = maybe_wrap_jit_kernel_sglang_debug(
+    per_tensor_quant_fp8, "jit_kernel.per_tensor_quant_fp8"
+)

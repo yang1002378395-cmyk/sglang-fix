@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Optional
 
 import torch
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import (
     cache_once,
     is_arch_support_pdl,
@@ -131,3 +132,16 @@ def fused_inplace_qknorm_across_heads(
     """
     module = _jit_qknorm_across_heads_module(q.dtype)
     module.qknorm_across_heads(q, k, q_weight, k_weight, eps)
+
+
+fused_inplace_qknorm = maybe_wrap_jit_kernel_sglang_debug(
+    fused_inplace_qknorm, "jit_kernel.norm.fused_inplace_qknorm"
+)
+rmsnorm = maybe_wrap_jit_kernel_sglang_debug(rmsnorm, "jit_kernel.norm.rmsnorm")
+fused_add_rmsnorm = maybe_wrap_jit_kernel_sglang_debug(
+    fused_add_rmsnorm, "jit_kernel.norm.fused_add_rmsnorm"
+)
+fused_inplace_qknorm_across_heads = maybe_wrap_jit_kernel_sglang_debug(
+    fused_inplace_qknorm_across_heads,
+    "jit_kernel.norm.fused_inplace_qknorm_across_heads",
+)

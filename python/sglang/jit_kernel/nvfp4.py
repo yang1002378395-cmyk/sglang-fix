@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional, Tuple
 
 import torch
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.jit_kernel.utils import cache_once, load_jit
 from sglang.srt.utils.custom_op import register_custom_op
 
@@ -626,3 +627,24 @@ def suggest_nvfp4_global_scale(x: torch.Tensor) -> torch.Tensor:
     """Utility for tests/benchmarks: return global scale used by NVFP4 quantization."""
     tensor_amax = torch.abs(x).max().to(torch.float32)
     return _FLOAT8_E4M3_MAX * _FLOAT4_E2M1_MAX / tensor_amax
+
+
+cutlass_scaled_fp4_mm = maybe_wrap_jit_kernel_sglang_debug(
+    cutlass_scaled_fp4_mm, "jit_kernel.nvfp4.cutlass_scaled_fp4_mm"
+)
+cutlass_fp4_group_mm = maybe_wrap_jit_kernel_sglang_debug(
+    cutlass_fp4_group_mm, "jit_kernel.nvfp4.cutlass_fp4_group_mm"
+)
+scaled_fp4_quant = maybe_wrap_jit_kernel_sglang_debug(
+    scaled_fp4_quant, "jit_kernel.nvfp4.scaled_fp4_quant"
+)
+scaled_fp4_experts_quant = maybe_wrap_jit_kernel_sglang_debug(
+    scaled_fp4_experts_quant, "jit_kernel.nvfp4.scaled_fp4_experts_quant"
+)
+scaled_fp4_grouped_quant = maybe_wrap_jit_kernel_sglang_debug(
+    scaled_fp4_grouped_quant, "jit_kernel.nvfp4.scaled_fp4_grouped_quant"
+)
+silu_and_mul_scaled_fp4_grouped_quant = maybe_wrap_jit_kernel_sglang_debug(
+    silu_and_mul_scaled_fp4_grouped_quant,
+    "jit_kernel.nvfp4.silu_and_mul_scaled_fp4_grouped_quant",
+)

@@ -2,6 +2,7 @@ import torch
 import triton  # type: ignore
 import triton.language as tl  # type: ignore
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
 from sglang.multimodal_gen.runtime.platforms import current_platform
 
 
@@ -116,3 +117,8 @@ if current_platform.is_mps():
     from .mps_fallback import apply_rotary_embedding_native
 
     apply_rotary_embedding = apply_rotary_embedding_native
+
+
+apply_rotary_embedding = maybe_wrap_jit_kernel_sglang_debug(
+    apply_rotary_embedding, "jit_kernel.diffusion.triton.apply_rotary_embedding"
+)

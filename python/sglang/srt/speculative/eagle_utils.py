@@ -4,7 +4,6 @@ from typing import List, Optional
 
 import torch
 
-from sglang.api_logging import sglang_debug_api
 from sglang.srt.utils import is_cuda, is_hip, is_npu
 
 _is_cuda = is_cuda()
@@ -13,12 +12,8 @@ _is_npu = is_npu()
 
 if _is_cuda or _is_hip:
     from sgl_kernel import (
-        build_tree_kernel_efficient as _sgl_build_tree_kernel_efficient,
+        build_tree_kernel_efficient as sgl_build_tree_kernel_efficient,
     )
-
-    @sglang_debug_api(op_name="sgl_kernel.build_tree_kernel_efficient")
-    def sgl_build_tree_kernel_efficient(*args, **kwargs):
-        return _sgl_build_tree_kernel_efficient(*args, **kwargs)
 
 
 def organize_draft_results(
@@ -175,11 +170,7 @@ def verify_tree_greedy_func(
     topk: int = -1,
 ):
     if _is_cuda or _is_hip:
-        from sgl_kernel import verify_tree_greedy as _verify_tree_greedy
-
-        @sglang_debug_api(op_name="sgl_kernel.verify_tree_greedy")
-        def verify_tree_greedy(*args, **kwargs):
-            return _verify_tree_greedy(*args, **kwargs)
+        from sgl_kernel import verify_tree_greedy
 
         verify_tree_greedy(
             predicts=predicts,  # mutable

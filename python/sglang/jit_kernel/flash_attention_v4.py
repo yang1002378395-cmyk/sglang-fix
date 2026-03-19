@@ -4,6 +4,8 @@ from typing import Callable, Optional, Tuple, Union
 
 import torch
 
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
+
 try:
     from flash_attn.cute import flash_attn_varlen_func as _flash_attn_varlen_func
 except Exception as _e:  # pragma: no cover
@@ -166,3 +168,11 @@ def flash_attn_with_kvcache(
     if isinstance(result, tuple):
         return result[0]
     return result
+
+
+flash_attn_varlen_func = maybe_wrap_jit_kernel_sglang_debug(
+    flash_attn_varlen_func, "jit_kernel.flash_attention_v4.flash_attn_varlen_func"
+)
+flash_attn_with_kvcache = maybe_wrap_jit_kernel_sglang_debug(
+    flash_attn_with_kvcache, "jit_kernel.flash_attention_v4.flash_attn_with_kvcache"
+)
