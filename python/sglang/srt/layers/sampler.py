@@ -27,7 +27,6 @@ if is_cuda():
         top_k_renorm_prob,
         top_p_renorm_prob,
     )
-
 if is_npu():
     import torch_npu
 

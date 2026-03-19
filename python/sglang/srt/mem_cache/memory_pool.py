@@ -37,10 +37,7 @@ import triton
 import triton.language as tl
 
 from sglang.api_logging import sglang_debug_api
-from sglang.jit_kernel.kvcache import (
-    can_use_store_cache,
-    store_cache,
-)
+from sglang.jit_kernel.kvcache import can_use_store_cache, store_cache
 from sglang.srt.configs.mamba_utils import BaseLinearStateParams
 from sglang.srt.constants import GPU_MEMORY_TYPE_KV_CACHE
 from sglang.srt.environ import envs
