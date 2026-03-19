@@ -261,8 +261,8 @@ def generate_dashboard(
                 row += " — |"
             lines.append(row)
 
-    # ---- Section 3: Cross-Framework Speedup Trend ----
-    if history:
+    # ---- Section 3: Cross-Framework Speedup Trend (only if multiple frameworks) ----
+    if history and other_frameworks:
         lines.append("\n## SGLang vs vLLM-Omni Speedup Over Time\n")
 
         header = "| Date |"
@@ -301,44 +301,56 @@ def generate_dashboard(
                 sg_vals.append(sg if sg else 0)
                 vl_vals.append(vl if vl else 0)
 
+            has_vl_data = any(v > 0 for v in vl_vals)
+
             lines.append(f"\n### Latency Trend: {cid}\n")
             lines.append("```mermaid")
             lines.append("xychart-beta")
             lines.append(f'  title "Latency Trend — {cid}"')
             lines.append("  x-axis [{}]".format(", ".join(f'"{d}"' for d in dates)))
-            max_val = max(max(sg_vals), max(vl_vals)) * 1.2 if sg_vals else 100
+            all_vals = sg_vals + (vl_vals if has_vl_data else [])
+            max_val = max(all_vals) * 1.2 if all_vals else 100
             lines.append(f'  y-axis "Latency (s)" 0 --> {max_val:.0f}')
             lines.append(f"  line [{', '.join(f'{v:.2f}' for v in sg_vals)}]")
-            lines.append(f"  line [{', '.join(f'{v:.2f}' for v in vl_vals)}]")
+            if has_vl_data:
+                lines.append(f"  line [{', '.join(f'{v:.2f}' for v in vl_vals)}]")
             lines.append("```")
-            lines.append(f"\n*Blue: SGLang, Orange: vLLM-Omni*\n")
+            if has_vl_data:
+                lines.append(f"\n*Blue: SGLang, Orange: vLLM-Omni*\n")
+            else:
+                lines.append(f"\n*SGLang performance over time*\n")
 
-        # Chart: Speedup trend
-        lines.append("\n### Speedup Trend (SGLang vs vLLM-Omni)\n")
-        lines.append("```mermaid")
-        lines.append("xychart-beta")
-        lines.append('  title "SGLang Speedup Over vLLM-Omni"')
-        dates = [_short_date(run.get("timestamp", "")) for run in all_runs]
-        lines.append("  x-axis [{}]".format(", ".join(f'"{d}"' for d in dates)))
-        lines.append('  y-axis "Speedup (x)" 0 --> 3')
+        # Chart: Speedup trend (only if multiple frameworks)
+        if other_frameworks:
+            lines.append("\n### Speedup Trend (SGLang vs vLLM-Omni)\n")
+            lines.append("```mermaid")
+            lines.append("xychart-beta")
+            lines.append('  title "SGLang Speedup Over vLLM-Omni"')
+            dates = [_short_date(run.get("timestamp", "")) for run in all_runs]
+            lines.append(
+                "  x-axis [{}]".format(", ".join(f'"{d}"' for d in dates))
+            )
+            lines.append('  y-axis "Speedup (x)" 0 --> 3')
 
-        for cid in case_ids:
-            speedups = []
-            for run in all_runs:
-                run_cases = _extract_case_results(run)
-                sg = run_cases.get(cid, {}).get("sglang")
-                vl = run_cases.get(cid, {}).get("vllm-omni")
-                if sg and vl and sg > 0:
-                    speedups.append(vl / sg)
-                else:
-                    speedups.append(1.0)
-            lines.append(f"  line [{', '.join(f'{v:.2f}' for v in speedups)}]")
+            for cid in case_ids:
+                speedups = []
+                for run in all_runs:
+                    run_cases = _extract_case_results(run)
+                    sg = run_cases.get(cid, {}).get("sglang")
+                    vl = run_cases.get(cid, {}).get("vllm-omni")
+                    if sg and vl and sg > 0:
+                        speedups.append(vl / sg)
+                    else:
+                        speedups.append(1.0)
+                lines.append(
+                    f"  line [{', '.join(f'{v:.2f}' for v in speedups)}]"
+                )
 
-        lines.append("```")
-        case_legend = ", ".join(
-            f"*Line {i+1}: {cid}*" for i, cid in enumerate(case_ids)
-        )
-        lines.append(f"\n{case_legend}\n")
+            lines.append("```")
+            case_legend = ", ".join(
+                f"*Line {i+1}: {cid}*" for i, cid in enumerate(case_ids)
+            )
+            lines.append(f"\n{case_legend}\n")
 
     # Footer
     lines.append("\n---")
