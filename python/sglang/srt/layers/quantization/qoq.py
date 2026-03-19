@@ -22,6 +22,7 @@ _is_cuda = is_cuda()
 if _is_cuda:
     from sgl_kernel import qserve_w4a8_per_chn_gemm, qserve_w4a8_per_group_gemm
 
+
 QoQ_SUPPORTED_WEIGHT_BITS = [4]
 QoQ_SUPPORTED_GROUP_SIZES = [-1, 128]
 

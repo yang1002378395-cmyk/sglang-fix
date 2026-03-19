@@ -20,9 +20,7 @@ if _is_cuda:
     from sglang.jit_kernel.gptq_marlin import gptq_marlin_gemm
     from sglang.jit_kernel.gptq_marlin_repack import gptq_marlin_repack
 
-
 ScalarType, scalar_types = get_scalar_types()
-
 
 logger = logging.getLogger(__name__)
 
