@@ -20,6 +20,10 @@ from sglang.multimodal_gen.runtime.pipelines_core.stages.validators import (
 )
 from sglang.multimodal_gen.runtime.server_args import ServerArgs
 from sglang.multimodal_gen.runtime.utils.logging_utils import init_logger
+from sglang.multimodal_gen.runtime.utils.tensor_dump import (
+    dump_request_metadata,
+    dump_value,
+)
 
 logger = init_logger(__name__)
 
@@ -106,6 +110,8 @@ class LatentPreparationStage(PipelineStage):
         # Update batch with prepared latents
         batch.latents = latents
         batch.raw_latent_shape = latents.shape
+        dump_request_metadata(batch)
+        dump_value("latents_init", batch.latents, batch=batch)
         return batch
 
     def adjust_video_length(self, batch: Req, server_args: ServerArgs) -> int:

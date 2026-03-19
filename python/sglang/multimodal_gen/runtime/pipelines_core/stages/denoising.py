@@ -78,6 +78,10 @@ from sglang.multimodal_gen.runtime.utils.layerwise_offload import OffloadableDiT
 from sglang.multimodal_gen.runtime.utils.logging_utils import init_logger
 from sglang.multimodal_gen.runtime.utils.perf_logger import StageProfiler
 from sglang.multimodal_gen.runtime.utils.profiler import SGLDiffusionProfiler
+from sglang.multimodal_gen.runtime.utils.tensor_dump import (
+    dump_request_metadata,
+    dump_value,
+)
 from sglang.multimodal_gen.utils import dict_to_3d_list, masks_like
 
 logger = init_logger(__name__)
@@ -1194,6 +1198,11 @@ class DenoisingStage(PipelineStage):
         )
         return noise_cfg
 
+    def match_noise_pred_norm(self, noise_cfg, noise_pred_text) -> torch.Tensor:
+        cond_norm = torch.norm(noise_pred_text, dim=-1, keepdim=True)
+        noise_norm = torch.norm(noise_cfg, dim=-1, keepdim=True).clamp_min(1e-12)
+        return noise_cfg * (cond_norm / noise_norm)
+
     def _build_attn_metadata(
         self,
         i: int,
@@ -1390,6 +1399,7 @@ class DenoisingStage(PipelineStage):
         noise_pred_cond: torch.Tensor | None = None
         noise_pred_uncond: torch.Tensor | None = None
         cfg_rank = get_classifier_free_guidance_rank()
+        dump_request_metadata(batch)
         # positive pass
         if not (server_args.enable_cfg_parallel and cfg_rank != 0):
             batch.is_cfg_negative = False
@@ -1411,8 +1421,14 @@ class DenoisingStage(PipelineStage):
                 noise_pred_cond = server_args.pipeline_config.slice_noise_pred(
                     noise_pred_cond, latents
                 )
+                if timestep_index == 0:
+                    dump_value(
+                        "noise_pred_cond_step0", noise_pred_cond, batch=batch
+                    )
         if not batch.do_classifier_free_guidance:
             # If CFG is disabled, we are done. Return the conditional prediction.
+            if timestep_index == 0:
+                dump_value("noise_pred_step0", noise_pred_cond, batch=batch)
             return noise_pred_cond
 
         # negative pass
@@ -1435,17 +1451,27 @@ class DenoisingStage(PipelineStage):
                 noise_pred_uncond = server_args.pipeline_config.slice_noise_pred(
                     noise_pred_uncond, latents
                 )
+                if timestep_index == 0:
+                    dump_value(
+                        "noise_pred_uncond_step0", noise_pred_uncond, batch=batch
+                    )
 
         # Combine predictions
+        cfg_scale = server_args.pipeline_config.get_classifier_free_guidance_scale(
+            batch, current_guidance_scale
+        )
+        should_rescale_true_cfg = (
+            server_args.pipeline_config.should_rescale_true_cfg_noise(batch)
+        )
         if server_args.enable_cfg_parallel:
             # Each rank computes its partial contribution and we sum via all-reduce:
             #   final = s*cond + (1-s)*uncond
             if cfg_rank == 0:
                 assert noise_pred_cond is not None
-                partial = current_guidance_scale * noise_pred_cond
+                partial = cfg_scale * noise_pred_cond
             else:
                 assert noise_pred_uncond is not None
-                partial = (1 - current_guidance_scale) * noise_pred_uncond
+                partial = (1 - cfg_scale) * noise_pred_uncond
 
             noise_pred = cfg_model_parallel_all_reduce(partial)
 
@@ -1483,11 +1509,26 @@ class DenoisingStage(PipelineStage):
                     batch.guidance_rescale * noise_pred_rescaled
                     + (1 - batch.guidance_rescale) * noise_pred
                 )
+            if should_rescale_true_cfg:
+                noise_norm = torch.norm(noise_pred, dim=-1, keepdim=True).clamp_min(
+                    1e-12
+                )
+                if cfg_rank == 0:
+                    assert noise_pred_cond is not None
+                    cond_norm = torch.norm(
+                        noise_pred_cond, dim=-1, keepdim=True
+                    )
+                else:
+                    cond_norm = torch.empty_like(noise_norm)
+                cond_norm = get_cfg_group().broadcast(cond_norm, src=0)
+                noise_pred = noise_pred * (cond_norm / noise_norm)
+            if timestep_index == 0:
+                dump_value("noise_pred_step0", noise_pred, batch=batch)
             return noise_pred
         else:
             # Serial CFG: both cond and uncond are available locally
             assert noise_pred_cond is not None and noise_pred_uncond is not None
-            noise_pred = noise_pred_uncond + current_guidance_scale * (
+            noise_pred = noise_pred_uncond + cfg_scale * (
                 noise_pred_cond - noise_pred_uncond
             )
 
@@ -1508,6 +1549,10 @@ class DenoisingStage(PipelineStage):
                     noise_pred_cond,
                     guidance_rescale=batch.guidance_rescale,
                 )
+            if should_rescale_true_cfg:
+                noise_pred = self.match_noise_pred_norm(noise_pred, noise_pred_cond)
+            if timestep_index == 0:
+                dump_value("noise_pred_step0", noise_pred, batch=batch)
             return noise_pred
 
     def prepare_sta_param(self, batch: Req, server_args: ServerArgs):

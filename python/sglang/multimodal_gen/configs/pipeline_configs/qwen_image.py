@@ -144,12 +144,25 @@ class QwenImagePipelineConfig(ImagePipelineConfig):
     def prepare_sigmas(self, sigmas, num_inference_steps):
         return self._prepare_sigmas(sigmas, num_inference_steps)
 
+    def get_classifier_free_guidance_scale(self, batch, guidance_scale: float) -> float:
+        if batch.true_cfg_scale is not None:
+            return batch.true_cfg_scale
+        return guidance_scale
+
+    def should_rescale_true_cfg_noise(self, batch) -> bool:
+        return (
+            batch.true_cfg_scale is not None
+            and batch.true_cfg_scale > 1.0
+            and batch.do_classifier_free_guidance
+        )
+
     def prepare_image_processor_kwargs(self, batch, neg=False):
         prompt = batch.prompt if not neg else batch.negative_prompt
         if prompt:
             prompt_template_encode = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n"
-            txt = prompt_template_encode.format(batch.prompt)
-            return dict(text=[txt], padding=True)
+            prompt_list = _normalize_prompt_list(prompt)
+            txt = [prompt_template_encode.format(cur_prompt) for cur_prompt in prompt_list]
+            return dict(text=txt, padding=True)
         else:
             return {}
 

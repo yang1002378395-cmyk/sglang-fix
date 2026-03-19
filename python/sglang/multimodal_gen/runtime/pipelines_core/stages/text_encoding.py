@@ -24,6 +24,10 @@ from sglang.multimodal_gen.runtime.pipelines_core.stages.validators import (
 )
 from sglang.multimodal_gen.runtime.server_args import ServerArgs
 from sglang.multimodal_gen.runtime.utils.logging_utils import init_logger
+from sglang.multimodal_gen.runtime.utils.tensor_dump import (
+    dump_request_metadata,
+    dump_value,
+)
 
 logger = init_logger(__name__)
 
@@ -104,6 +108,16 @@ class TextEncodingStage(PipelineStage):
                 batch.negative_attention_mask = []
                 for nm in neg_masks_list:
                     batch.negative_attention_mask.append(nm)
+
+        dump_request_metadata(batch)
+        dump_value("prompt_embeds", batch.prompt_embeds[:1], batch=batch)
+        dump_value("prompt_attention_mask", batch.prompt_attention_mask, batch=batch)
+        dump_value(
+            "negative_prompt_embeds", batch.negative_prompt_embeds, batch=batch
+        )
+        dump_value(
+            "negative_attention_mask", batch.negative_attention_mask, batch=batch
+        )
 
         return batch
 

@@ -242,6 +242,14 @@ class PipelineConfig:
     def prepare_sigmas(self, sigmas, num_inference_steps):
         return sigmas
 
+    def get_classifier_free_guidance_scale(
+        self, batch, guidance_scale: float
+    ) -> float:
+        return guidance_scale
+
+    def should_rescale_true_cfg_noise(self, batch) -> bool:
+        return False
+
     ## For ImageVAEEncodingStage
     def preprocess_condition_image(
         self, image, target_width, target_height, _vae_image_processor
