@@ -1094,11 +1094,38 @@ class QwenImageTransformer2DModel(CachableDiT, OffloadableDiTMixin):
 
     @functools.lru_cache(maxsize=50)
     def build_modulate_index(self, img_shapes: tuple[int, int, int], device):
+        try:
+            from sglang.multimodal_gen.runtime.distributed.parallel_state import (
+                get_sp_world_size,
+            )
+
+            sp_world_size = get_sp_world_size()
+        except Exception:
+            sp_world_size = 1
+
+        def _local_seq_len(seq_len: int) -> int:
+            if sp_world_size <= 1:
+                return seq_len
+            padded_len = seq_len
+            if padded_len % sp_world_size != 0:
+                padded_len += sp_world_size - (padded_len % sp_world_size)
+            return padded_len // sp_world_size
+
         modulate_index_list = []
         for sample in img_shapes:
             first_size = sample[0][0] * sample[0][1] * sample[0][2]
             total_size = sum(s[0] * s[1] * s[2] for s in sample)
-            idx = (torch.arange(total_size, device=device) >= first_size).int()
+            if sp_world_size > 1:
+                first_local_size = _local_seq_len(first_size)
+                tail_local_size = _local_seq_len(total_size - first_size)
+                idx = torch.cat(
+                    [
+                        torch.zeros(first_local_size, device=device, dtype=torch.int),
+                        torch.ones(tail_local_size, device=device, dtype=torch.int),
+                    ]
+                )
+            else:
+                idx = (torch.arange(total_size, device=device) >= first_size).int()
             modulate_index_list.append(idx)
 
         modulate_index = torch.stack(modulate_index_list)

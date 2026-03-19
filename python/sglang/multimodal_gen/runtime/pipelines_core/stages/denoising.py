@@ -710,9 +710,7 @@ class DenoisingStage(PipelineStage):
 
         gathered = server_args.pipeline_config.gather_latents_for_sp(tensor)
         if gathered.dim() == 4:
-            gathered = sequence_model_parallel_all_gather(
-                gathered.contiguous(), dim=2
-            )
+            gathered = sequence_model_parallel_all_gather(gathered.contiguous(), dim=2)
             if getattr(batch, "_zimage_sp_swap_hw", False):
                 gathered = gathered.transpose(2, 3).contiguous()
         if hasattr(batch, "raw_latent_shape") and gathered.dim() == 3:

@@ -327,9 +327,7 @@ class QwenImageEditPipelineConfig(QwenImagePipelineConfig):
 
         img_cache, txt_cache = freqs_cis
         noisy_img_cache = shard_rotary_emb_for_sp(img_cache[:noisy_img_seq_len, :])
-        condition_img_cache = shard_rotary_emb_for_sp(
-            img_cache[noisy_img_seq_len:, :]
-        )
+        condition_img_cache = shard_rotary_emb_for_sp(img_cache[noisy_img_seq_len:, :])
         img_cache = torch.cat([noisy_img_cache, condition_img_cache], dim=0).to(
             device=device
         )
@@ -539,12 +537,8 @@ class QwenImageEditPlusPipelineConfig(QwenImageEditPipelineConfig):
         condition_img_cos = shard_rotary_emb_for_sp(img_cos[noisy_img_seq_len:, :])
         condition_img_sin = shard_rotary_emb_for_sp(img_sin[noisy_img_seq_len:, :])
 
-        img_cos = torch.cat([noisy_img_cos, condition_img_cos], dim=0).to(
-            device=device
-        )
-        img_sin = torch.cat([noisy_img_sin, condition_img_sin], dim=0).to(
-            device=device
-        )
+        img_cos = torch.cat([noisy_img_cos, condition_img_cos], dim=0).to(device=device)
+        img_sin = torch.cat([noisy_img_sin, condition_img_sin], dim=0).to(device=device)
 
         return {
             "txt_seq_lens": txt_seq_lens,
