@@ -60,7 +60,7 @@ if _is_npu:
     import torch_npu
 
 if _is_cuda:
-    from sglang.jit_kernel.awq_dequantize import awq_dequantize as _awq_dequantize
+    from sglang.jit_kernel.awq_dequantize import awq_dequantize
     from sglang.jit_kernel.awq_marlin_repack import (
         awq_marlin_moe_repack,
         awq_marlin_repack,
@@ -68,7 +68,7 @@ if _is_cuda:
     from sglang.srt.utils.custom_op import register_custom_op_from_extern
 
     awq_dequantize = register_custom_op_from_extern(
-        _awq_dequantize,
+        awq_dequantize,
         fake_impl=lambda qweight, scales, qzeros: qweight.new_empty(
             qweight.shape[:-1] + (qweight.shape[-1] * 8,), dtype=scales.dtype
         ),
@@ -87,6 +87,7 @@ else:
     warnings.warn(f"Only CUDA, HIP and XPU support AWQ currently.")
 
 logger = logging.getLogger(__name__)
+
 
 ScalarType, scalar_types = get_scalar_types()
 

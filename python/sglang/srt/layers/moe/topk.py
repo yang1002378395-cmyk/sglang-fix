@@ -65,6 +65,7 @@ from sglang.srt.utils.patch_torch import register_fake_if_exists
 if TYPE_CHECKING:
     from sglang.srt.layers.quantization import QuantizationConfig
 
+
 logger = logging.getLogger(__name__)
 _is_cuda = is_cuda()
 _is_hip = is_hip()
@@ -115,7 +116,6 @@ if _is_cuda:
 
     try:
         from sgl_kernel import kimi_k2_moe_fused_gate
-
     except ImportError as e:
         pass
 
@@ -124,7 +124,6 @@ if _is_cuda or _is_hip or _is_xpu:
 
     try:
         from sgl_kernel import topk_sigmoid
-
     except ImportError:
         pass
 if _use_aiter:
