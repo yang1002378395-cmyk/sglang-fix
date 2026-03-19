@@ -2003,7 +2003,6 @@ class ScheduleBatch(ScheduleBatchDisaggregationDecodeMixin):
         # Allocate memory
         self.out_cache_loc = alloc_for_decode(self, token_per_req=1)
 
-        # todo hisparse: be careful about meta data modification
         # Update req-level memory management fields
         for req in self.reqs:
             req.decode_batch_idx += 1

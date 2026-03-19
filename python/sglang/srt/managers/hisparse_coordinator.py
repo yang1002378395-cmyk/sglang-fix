@@ -473,8 +473,32 @@ class HiSparseCoordinator:
 
         return top_k_indices
 
+    def abort_staging_request(self, req: Req) -> None:
+        """Remove a request from the staging queue and free its host resources.
+
+        Must be called when aborting a request that has been admitted into staging
+        but has not yet completed (i.e. req.staging is True).
+        """
+        # Remove from staging queue
+        self.ack_staging_queue = [
+            act for act in self.ack_staging_queue if act.req is not req
+        ]
+        # Wait for any in-flight staging DMA to complete before freeing
+        self.write_staging_stream.synchronize()
+
+        # Free host memory that was allocated during admit_request_into_staging
+        host_indices = self.req_to_host_pool[req.req_pool_idx, : req.kv_allocated_len]
+        host_indices = host_indices[host_indices >= 0]
+        if host_indices.numel() > 0:
+            self.mem_pool_host.free(host_indices)
+        self.req_to_host_pool[req.req_pool_idx, :] = -1
+        req.staging = False
+
     def retract_req(self, req: Req) -> None:
-        self.request_finished(req)
+        if req.staging:
+            self.abort_staging_request(req)
+        else:
+            self.request_finished(req)
 
     def request_finished(self, req: Req):
         # release resources only after the execution of a potential overlapped batch
@@ -526,9 +550,10 @@ class HiSparseCoordinator:
                 f"top_k_result dtype {top_k_result.dtype} is not int32 as expected"
             )
 
-        top_k_indices = self.top_k_device_locs_buffer[: req_pool_indices.size(0)]
+        num_reqs = req_pool_indices.size(0)
+        top_k_indices = self.top_k_device_locs_buffer[:num_reqs]
         top_k_indices.fill_(-1)
-        self.residency_map.fill_(-1)
+        self.residency_map[:num_reqs].fill_(-1)
         # todo, adjustable for performance
         block_size = 512
         load_cache_to_device_buffer_mla(

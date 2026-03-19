@@ -115,20 +115,14 @@ __global__ void load_cache_to_device_buffer_kernel(
     return;
   }
 
-  // todo: cut shared memory usage
-
-  // cache top k tokens and their residency status, and prepare for eviction selection
+  // Top-k token positions; reused as miss-token scratch in the copy phase
   __shared__ int32_t s_top_k_tokens[NUM_TOP_K];
-  // cache missed tokens and their assigned evictable slots for the final copying phase
-  // todo, this might be consolidated with s_top_k_tokens
-  __shared__ int32_t s_missed_tokens[NUM_TOP_K];
-  // for prefix sum of hits/misses within each chunk, used to calculate offsets for writing results
+  // Prefix-sum offsets for hit counting and miss counting
   __shared__ int32_t s_chunk_offset[NUM_BUFFER_CHUNKS + 1];
-  // cache new slot orders for hits and evictable slots, to be written back to global memory
+  // Prefix-sum offsets for evictable counting
+  __shared__ int32_t s_evict_chunk_offset[NUM_BUFFER_CHUNKS + 1];
+  // Compacted slot ordering: [hits fwd→  ...  ←evictables bwd]
   __shared__ int16_t s_lru_slots_out[HOT_BUFFER_SIZE];
-  // cache buffer slot hit status for the current top-k tokens, used for eviction selection
-  // todo, resolve bank conflicts
-  __shared__ bool s_lru_bitmap[HOT_BUFFER_SIZE];
 
   __shared__ int32_t s_total_hits;
   __shared__ int32_t s_newest_hit;
@@ -156,16 +150,15 @@ __global__ void load_cache_to_device_buffer_kernel(
       s_top_k_tokens[i] = token_idx;
     }
   }
-  for (int i = tid; i < HOT_BUFFER_SIZE; i += BLOCK_SIZE) {
-    s_lru_bitmap[i] = false;
-  }
   for (int i = tid; i < NUM_BUFFER_CHUNKS + 1; i += BLOCK_SIZE) {
     s_chunk_offset[i] = 0;
+    s_evict_chunk_offset[i] = 0;
   }
   __syncthreads();
 
   constexpr int ITERATIONS_PER_WARP_BUFFER = (NUM_BUFFER_CHUNKS + NUM_WARPS - 1) / NUM_WARPS;
   int total_hit_count = 0;
+  int total_evict_count = 0;
   for (int iter = 0; iter < ITERATIONS_PER_WARP_BUFFER; iter++) {
     int chunk_idx = warp_id + iter * NUM_WARPS;
     bool has_valid_chunk = chunk_idx < NUM_BUFFER_CHUNKS;
@@ -176,6 +169,7 @@ __global__ void load_cache_to_device_buffer_kernel(
     int32_t my_buffer_token = (buf_slot >= 0) ? req_device_buffer_tokens[buf_slot] : -1;
     int my_found_top_k_idx = my_buffer_token >= 0 ? req_residency_map[my_buffer_token] : -1;
     bool is_hit = my_found_top_k_idx >= 0;
+    bool is_evictable = has_valid_slot && !is_hit;
 
     // Record hits
     if (is_hit) {
@@ -184,12 +178,15 @@ __global__ void load_cache_to_device_buffer_kernel(
     }
 
     int local_hit_offset = 0;
+    int local_evict_offset = 0;
     if (has_valid_chunk) {
       const unsigned int hit_mask = __ballot_sync(0xFFFFFFFF, is_hit);
+      const unsigned int evict_mask = __ballot_sync(0xFFFFFFFF, is_evictable);
       local_hit_offset = __popc(hit_mask & lanes_before);
-      int warp_hit_count = __popc(hit_mask);
+      local_evict_offset = __popc(evict_mask & lanes_before);
       if (lane_id == 0) {
-        s_chunk_offset[chunk_idx + 1] = warp_hit_count;
+        s_chunk_offset[chunk_idx + 1] = __popc(hit_mask);
+        s_evict_chunk_offset[chunk_idx + 1] = __popc(evict_mask);
       }
     }
     __syncthreads();
@@ -197,65 +194,38 @@ __global__ void load_cache_to_device_buffer_kernel(
     if (warp_id == 0) {
       total_hit_count =
           warp_inclusive_scan(s_chunk_offset, lane_id, chunk_idx + 1, NUM_BUFFER_CHUNKS + 1, total_hit_count);
+      total_evict_count =
+          warp_inclusive_scan(s_evict_chunk_offset, lane_id, chunk_idx + 1, NUM_BUFFER_CHUNKS + 1, total_evict_count);
       if (tid == 0) {
         s_total_hits = total_hit_count;
       }
     }
     __syncthreads();
 
+    // Hits grow forward from index 0
     if (is_hit) {
       int hit_offset = s_chunk_offset[chunk_idx] + local_hit_offset;
       s_lru_slots_out[hit_offset] = buf_slot;
-      s_lru_bitmap[buf_slot] = true;
     }
-  }
-  __syncthreads();
-
-  // Second pass to collect evictable slots
-  for (int i = tid; i < NUM_BUFFER_CHUNKS + 1; i += BLOCK_SIZE) {
-    s_chunk_offset[i] = 0;
-  }
-  __syncthreads();
-
-  int total_evictable = 0;
-  for (int iter = 0; iter < ITERATIONS_PER_WARP_BUFFER; iter++) {
-    const int chunk_idx = warp_id + iter * NUM_WARPS;
-    const bool has_valid_chunk = chunk_idx < NUM_BUFFER_CHUNKS;
-
-    const int slot_idx = chunk_idx * WARP_SIZE + lane_id;
-    const bool has_valid_slot = has_valid_chunk && (slot_idx < HOT_BUFFER_SIZE);
-    const int16_t buf_slot = has_valid_slot ? req_lru_slots[slot_idx] : -1;
-    bool is_evictable = (buf_slot >= 0) && !s_lru_bitmap[buf_slot];
-    int local_evictable_offset = 0;
-
-    if (has_valid_chunk) {
-      const unsigned int evictable_mask = __ballot_sync(0xFFFFFFFF, is_evictable);
-      local_evictable_offset = __popc(evictable_mask & lanes_before);
-      const int warp_evictable_count = __popc(evictable_mask);
-      if (lane_id == 0) {
-        s_chunk_offset[chunk_idx + 1] = warp_evictable_count;
-      }
-    }
-    __syncthreads();
-
-    if (warp_id == 0) {
-      total_evictable =
-          warp_inclusive_scan(s_chunk_offset, lane_id, chunk_idx + 1, NUM_BUFFER_CHUNKS + 1, total_evictable);
-    }
-    __syncthreads();
-
+    // Evictables grow backward from HOT_BUFFER_SIZE - 1
     if (is_evictable) {
-      const int evictable_offset = s_chunk_offset[chunk_idx] + local_evictable_offset;
-      s_lru_slots_out[s_total_hits + evictable_offset] = buf_slot;
+      int evict_offset = s_evict_chunk_offset[chunk_idx] + local_evict_offset;
+      s_lru_slots_out[HOT_BUFFER_SIZE - 1 - evict_offset] = buf_slot;
     }
   }
   __syncthreads();
 
-  for (int i = tid; i < HOT_BUFFER_SIZE; i += BLOCK_SIZE) {
-    if (i < s_total_hits) {
-      req_lru_slots[HOT_BUFFER_SIZE - s_total_hits + i] = s_lru_slots_out[i];
-    } else {
-      req_lru_slots[i - s_total_hits] = s_lru_slots_out[i];
+  // Write back LRU order: evictables at front (LRU), hits at back (MRU).
+  {
+    const int total_evictable = HOT_BUFFER_SIZE - s_total_hits;
+    for (int i = tid; i < HOT_BUFFER_SIZE; i += BLOCK_SIZE) {
+      if (i < total_evictable) {
+        // Evictables: source at backward end, dest at LRU front
+        req_lru_slots[i] = s_lru_slots_out[HOT_BUFFER_SIZE - 1 - i];
+      } else {
+        // Hits: source at forward end, dest at MRU back
+        req_lru_slots[i] = s_lru_slots_out[i - total_evictable];
+      }
     }
   }
   // Reset offsets for the miss counting phase.
@@ -304,7 +274,9 @@ __global__ void load_cache_to_device_buffer_kernel(
     if (is_miss) {
       int miss_offset = s_chunk_offset[chunk_idx] + local_miss_offset;
       int16_t evict_slot = s_lru_slots_out[HOT_BUFFER_SIZE - 1 - miss_offset];
-      s_missed_tokens[miss_offset] = my_token;
+      // Reuse s_top_k_tokens as miss scratch: miss_offset < my_token_idx always
+      // holds (hits are skipped), so compacted writes never overrun pending reads.
+      s_top_k_tokens[miss_offset] = my_token;
       req_top_k_device_locs[my_token_idx] = req_device_buffer_locs[evict_slot];
       req_device_buffer_tokens[evict_slot] = my_token;
     }
@@ -314,7 +286,7 @@ __global__ void load_cache_to_device_buffer_kernel(
   total_misses = NUM_TOP_K - s_total_hits - s_newest_hit;
   // each warp copies one miss directly, can be separated into a new kernel if parallelism is a concern
   for (int miss_idx = warp_id; miss_idx < total_misses; miss_idx += NUM_WARPS) {
-    const int32_t miss_token = s_missed_tokens[miss_idx];
+    const int32_t miss_token = s_top_k_tokens[miss_idx];
     const int16_t evict_slot = s_lru_slots_out[HOT_BUFFER_SIZE - 1 - miss_idx];
 
     if (evict_slot >= 0 && evict_slot < HOT_BUFFER_SIZE && miss_token >= 0) {
