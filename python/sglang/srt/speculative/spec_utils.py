@@ -29,16 +29,17 @@ _is_npu = is_npu()
 if TYPE_CHECKING:
     from sglang.srt.speculative.eagle_info import EagleVerifyInput
 
+
 if _is_cuda:
     from sgl_kernel import fast_topk
-
 elif _is_hip:
     from sgl_kernel import fast_topk
-
 else:
     from sglang.srt.utils.common import fast_topk
 
+
 logger = logging.getLogger(__name__)
+
 
 # Simulate acceptance length for benchmarking purposes
 SIMULATE_ACC_LEN = envs.SGLANG_SIMULATE_ACC_LEN.get()  # turn off if < 0
