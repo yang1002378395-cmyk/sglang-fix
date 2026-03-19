@@ -23,6 +23,7 @@ if _is_cuda:
 
 ScalarType, scalar_types = get_scalar_types()
 
+
 logger = logging.getLogger(__name__)
 
 

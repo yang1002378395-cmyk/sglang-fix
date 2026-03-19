@@ -68,7 +68,6 @@ if _is_cuda:
 
     from sglang.jit_kernel.gptq_marlin_repack import gptq_marlin_repack
 
-
 _is_npu = is_npu()
 
 if _is_npu:

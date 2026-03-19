@@ -37,7 +37,6 @@ _is_mps = is_mps()
 if _is_cuda:
     from sglang.jit_kernel.rope import apply_rope_with_cos_sin_cache_inplace
 
-
 if _is_npu:
     import torch_npu
 

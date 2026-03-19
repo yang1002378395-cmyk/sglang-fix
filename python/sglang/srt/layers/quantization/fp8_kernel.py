@@ -54,15 +54,10 @@ if _is_cuda:
     from sglang.jit_kernel.per_tensor_quant_fp8 import (
         per_tensor_quant_fp8 as sgl_per_tensor_quant_fp8,
     )
-    from sglang.jit_kernel.per_token_group_quant_8bit import (
-        per_token_group_quant_8bit as sgl_per_token_group_quant_8bit_jit,
-    )
 
     # Temporary
     try:
-        from sgl_kernel import (
-            sgl_per_token_group_quant_8bit,
-        )
+        from sgl_kernel import sgl_per_token_group_quant_8bit
 
         enable_sgl_per_token_group_quant_8bit = True
     except ImportError:
@@ -70,6 +65,9 @@ if _is_cuda:
 
         enable_sgl_per_token_group_quant_8bit = False
 
+    from sglang.jit_kernel.per_token_group_quant_8bit import (
+        per_token_group_quant_8bit as sgl_per_token_group_quant_8bit_jit,
+    )
 
 if _is_hip:
     _has_vllm = False

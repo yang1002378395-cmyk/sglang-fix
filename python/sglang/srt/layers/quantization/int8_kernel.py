@@ -14,9 +14,7 @@ _is_cuda = is_cuda()
 if _is_cuda:
     # Temporary
     try:
-        from sgl_kernel import (
-            sgl_per_token_group_quant_8bit,
-        )
+        from sgl_kernel import sgl_per_token_group_quant_8bit
 
         enable_sgl_per_token_group_quant_8bit = True
     except ImportError:

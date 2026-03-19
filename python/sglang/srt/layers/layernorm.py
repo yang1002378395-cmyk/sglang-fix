@@ -65,7 +65,6 @@ if _is_cuda or _is_xpu:
         gemma_rmsnorm,
         rmsnorm,
     )
-
 _has_vllm_rms_norm = False
 if _use_aiter:
     from aiter import rmsnorm2d_fwd as rms_norm

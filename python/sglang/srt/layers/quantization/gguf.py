@@ -43,7 +43,6 @@ if _is_cuda or _is_musa:
         ggml_mul_mat_a8,
         ggml_mul_mat_vec_a8,
     )
-
 else:
     if not _is_hip:
         warnings.warn(f"Only CUDA and MUSA support GGUF quantization currently.")
