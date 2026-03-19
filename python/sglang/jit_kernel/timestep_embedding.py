@@ -22,6 +22,9 @@ def _jit_timestep_embedding_module(dtype: torch.dtype) -> Module:
     )
 
 
+@maybe_wrap_jit_kernel_sglang_debug(
+    op_name="jit_kernel.timestep_embedding.timestep_embedding"
+)
 def timestep_embedding(
     t: torch.Tensor,
     dim: int,
@@ -45,8 +48,3 @@ def timestep_embedding(
         int(max_period),
     )
     return output
-
-
-timestep_embedding = maybe_wrap_jit_kernel_sglang_debug(
-    timestep_embedding, "jit_kernel.timestep_embedding.timestep_embedding"
-)

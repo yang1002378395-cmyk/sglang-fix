@@ -37,6 +37,9 @@ def _or_empty(
     return t if t is not None else torch.empty(0, device=device, dtype=dtype)
 
 
+@maybe_wrap_jit_kernel_sglang_debug(
+    op_name="jit_kernel.moe_wna16_marlin.moe_wna16_marlin_gemm"
+)
 def moe_wna16_marlin_gemm(
     a: torch.Tensor,
     c_or_none: Optional[torch.Tensor],
@@ -171,8 +174,3 @@ def moe_wna16_marlin_gemm(
     )
 
     return c
-
-
-moe_wna16_marlin_gemm = maybe_wrap_jit_kernel_sglang_debug(
-    moe_wna16_marlin_gemm, "jit_kernel.moe_wna16_marlin.moe_wna16_marlin_gemm"
-)

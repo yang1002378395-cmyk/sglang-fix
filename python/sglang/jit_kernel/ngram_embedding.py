@@ -22,6 +22,9 @@ def _jit_ngram_embedding_module() -> Module:
     )
 
 
+@maybe_wrap_jit_kernel_sglang_debug(
+    op_name="jit_kernel.ngram_embedding.compute_n_gram_ids"
+)
 def compute_n_gram_ids(
     ne_n: int,
     ne_k: int,
@@ -67,6 +70,9 @@ def compute_n_gram_ids(
     )
 
 
+@maybe_wrap_jit_kernel_sglang_debug(
+    op_name="jit_kernel.ngram_embedding.update_token_table"
+)
 def update_token_table(
     tokens: torch.Tensor,
     ne_token_table: torch.Tensor,
@@ -98,11 +104,3 @@ def update_token_table(
         req_lens,
         ignore_tokens,
     )
-
-
-compute_n_gram_ids = maybe_wrap_jit_kernel_sglang_debug(
-    compute_n_gram_ids, "jit_kernel.ngram_embedding.compute_n_gram_ids"
-)
-update_token_table = maybe_wrap_jit_kernel_sglang_debug(
-    update_token_table, "jit_kernel.ngram_embedding.update_token_table"
-)

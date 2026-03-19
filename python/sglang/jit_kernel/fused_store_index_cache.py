@@ -65,6 +65,7 @@ def can_use_nsa_fused_store(
         return False
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.fused_store_index_k_cache")
 def fused_store_index_k_cache(
     key: torch.Tensor,
     index_k_with_scale: torch.Tensor,
@@ -102,8 +103,3 @@ def fused_store_index_k_cache(
 
     module = _jit_nsa_fused_store_module(key.dtype, out_cache_loc.dtype, page_size)
     module.fused_store_index_k_cache(key, index_k_with_scale, out_cache_loc)
-
-
-fused_store_index_k_cache = maybe_wrap_jit_kernel_sglang_debug(
-    fused_store_index_k_cache, "jit_kernel.fused_store_index_k_cache"
-)

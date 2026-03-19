@@ -23,6 +23,7 @@ def _jit_gptq_marlin_repack_module() -> Module:
     )
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.gptq_marlin_repack")
 def gptq_marlin_repack(
     b_q_weight: torch.Tensor,
     perm: torch.Tensor,
@@ -42,8 +43,3 @@ def gptq_marlin_repack(
     module = _jit_gptq_marlin_repack_module()
     module.gptq_marlin_repack(b_q_weight, perm, out, size_k, size_n, num_bits)
     return out
-
-
-gptq_marlin_repack = maybe_wrap_jit_kernel_sglang_debug(
-    gptq_marlin_repack, "jit_kernel.gptq_marlin_repack"
-)

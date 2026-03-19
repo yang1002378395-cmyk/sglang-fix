@@ -67,6 +67,9 @@ def _default_unroll(element_size: int) -> int:
     return 1
 
 
+@maybe_wrap_jit_kernel_sglang_debug(
+    op_name="jit_kernel.hicache.transfer_hicache_one_layer"
+)
 def transfer_hicache_one_layer(
     k_cache_dst: torch.Tensor,
     v_cache_dst: torch.Tensor,
@@ -102,6 +105,9 @@ def transfer_hicache_one_layer(
     )
 
 
+@maybe_wrap_jit_kernel_sglang_debug(
+    op_name="jit_kernel.hicache.transfer_hicache_all_layer"
+)
 def transfer_hicache_all_layer(
     k_ptr_dst: torch.Tensor,
     v_ptr_dst: torch.Tensor,
@@ -137,11 +143,3 @@ def transfer_hicache_all_layer(
         kv_cache_src_stride_bytes,
         kv_cache_dst_stride_bytes,
     )
-
-
-transfer_hicache_one_layer = maybe_wrap_jit_kernel_sglang_debug(
-    transfer_hicache_one_layer, "jit_kernel.hicache.transfer_hicache_one_layer"
-)
-transfer_hicache_all_layer = maybe_wrap_jit_kernel_sglang_debug(
-    transfer_hicache_all_layer, "jit_kernel.hicache.transfer_hicache_all_layer"
-)

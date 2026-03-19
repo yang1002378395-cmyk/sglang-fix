@@ -77,6 +77,7 @@ def can_use_fused_inplace_qknorm(head_dim: int, dtype: torch.dtype) -> bool:
         return False
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.norm.fused_inplace_qknorm")
 def fused_inplace_qknorm(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -91,6 +92,7 @@ def fused_inplace_qknorm(
     module.qknorm(q, k, q_weight, k_weight, eps)
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.norm.rmsnorm")
 def rmsnorm(
     input: torch.Tensor,
     weight: torch.Tensor,
@@ -103,6 +105,7 @@ def rmsnorm(
     module.rmsnorm(input, weight, output, eps)
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.norm.fused_add_rmsnorm")
 def fused_add_rmsnorm(
     input: torch.Tensor,
     residual: torch.Tensor,
@@ -113,6 +116,9 @@ def fused_add_rmsnorm(
     module.fused_add_rmsnorm(input, residual, weight, eps)
 
 
+@maybe_wrap_jit_kernel_sglang_debug(
+    op_name="jit_kernel.norm.fused_inplace_qknorm_across_heads"
+)
 def fused_inplace_qknorm_across_heads(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -132,16 +138,3 @@ def fused_inplace_qknorm_across_heads(
     """
     module = _jit_qknorm_across_heads_module(q.dtype)
     module.qknorm_across_heads(q, k, q_weight, k_weight, eps)
-
-
-fused_inplace_qknorm = maybe_wrap_jit_kernel_sglang_debug(
-    fused_inplace_qknorm, "jit_kernel.norm.fused_inplace_qknorm"
-)
-rmsnorm = maybe_wrap_jit_kernel_sglang_debug(rmsnorm, "jit_kernel.norm.rmsnorm")
-fused_add_rmsnorm = maybe_wrap_jit_kernel_sglang_debug(
-    fused_add_rmsnorm, "jit_kernel.norm.fused_add_rmsnorm"
-)
-fused_inplace_qknorm_across_heads = maybe_wrap_jit_kernel_sglang_debug(
-    fused_inplace_qknorm_across_heads,
-    "jit_kernel.norm.fused_inplace_qknorm_across_heads",
-)

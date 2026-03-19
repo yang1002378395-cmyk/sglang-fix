@@ -73,6 +73,7 @@ def _per_token_group_quant_8bit_custom_op(
     return None
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.per_token_group_quant_8bit")
 def per_token_group_quant_8bit(
     input: torch.Tensor,
     output_q: torch.Tensor,
@@ -94,8 +95,3 @@ def per_token_group_quant_8bit(
         scale_ue8m0=scale_ue8m0,
     )
     return output_q, output_s
-
-
-per_token_group_quant_8bit = maybe_wrap_jit_kernel_sglang_debug(
-    per_token_group_quant_8bit, "jit_kernel.per_token_group_quant_8bit"
-)

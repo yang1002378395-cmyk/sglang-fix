@@ -20,6 +20,7 @@ def _jit_awq_marlin_repack_module() -> Module:
     )
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.awq_marlin_repack")
 def awq_marlin_repack(
     b_q_weight: torch.Tensor,
     size_k: int,
@@ -38,6 +39,7 @@ def awq_marlin_repack(
     return out
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.awq_marlin_moe_repack")
 def awq_marlin_moe_repack(
     b_q_weight: torch.Tensor,
     perm: torch.Tensor,
@@ -55,11 +57,3 @@ def awq_marlin_moe_repack(
     for e in range(num_experts):
         output[e] = awq_marlin_repack(b_q_weight[e], size_k, size_n, num_bits)
     return output
-
-
-awq_marlin_repack = maybe_wrap_jit_kernel_sglang_debug(
-    awq_marlin_repack, "jit_kernel.awq_marlin_repack"
-)
-awq_marlin_moe_repack = maybe_wrap_jit_kernel_sglang_debug(
-    awq_marlin_moe_repack, "jit_kernel.awq_marlin_moe_repack"
-)

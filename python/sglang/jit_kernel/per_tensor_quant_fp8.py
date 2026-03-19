@@ -23,6 +23,7 @@ def _jit_per_tensor_quant_fp8_module(is_static: bool, dtype: torch.dtype) -> Mod
     )
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.per_tensor_quant_fp8")
 @register_custom_op(
     op_name="per_tensor_quant_fp8",
     mutates_args=["output_q", "output_s"],
@@ -44,8 +45,3 @@ def per_tensor_quant_fp8(
     """
     module = _jit_per_tensor_quant_fp8_module(is_static, input.dtype)
     module.per_tensor_quant_fp8(input.view(-1), output_q.view(-1), output_s.view(-1))
-
-
-per_tensor_quant_fp8 = maybe_wrap_jit_kernel_sglang_debug(
-    per_tensor_quant_fp8, "jit_kernel.per_tensor_quant_fp8"
-)

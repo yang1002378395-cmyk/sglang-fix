@@ -177,6 +177,9 @@ def apply_rope_inplace_with_kvcache(
 
 
 # NOTE: this name is intentionally set as the old kernel in `sgl_kernel`
+@maybe_wrap_jit_kernel_sglang_debug(
+    op_name="jit_kernel.rope.apply_rope_with_cos_sin_cache_inplace"
+)
 def apply_rope_with_cos_sin_cache_inplace(
     q: torch.Tensor,
     k: torch.Tensor,
@@ -220,9 +223,3 @@ def apply_rope_with_cos_sin_cache_inplace(
         apply_rope_inplace(
             q, k, cos_sin_cache, positions, is_neox=is_neox, rope_dim=rope_dim
         )
-
-
-apply_rope_with_cos_sin_cache_inplace = maybe_wrap_jit_kernel_sglang_debug(
-    apply_rope_with_cos_sin_cache_inplace,
-    "jit_kernel.rope.apply_rope_with_cos_sin_cache_inplace",
-)

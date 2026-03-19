@@ -452,6 +452,7 @@ class LayerNormFn:
         return y
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.diffusion.triton.layer_norm_fn")
 def layer_norm_fn(
     x,
     weight,
@@ -539,6 +540,7 @@ def _norm_infer_kernel(
     tl.store(Y + cols, y, mask=cols < N)
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.diffusion.triton.norm_infer")
 def norm_infer(
     x: Tensor,
     weight: Optional[Tensor],
@@ -581,6 +583,7 @@ def norm_infer(
     return out
 
 
+@maybe_wrap_jit_kernel_sglang_debug(op_name="jit_kernel.diffusion.triton.rms_norm_fn")
 def rms_norm_fn(
     x,
     weight,
@@ -627,16 +630,57 @@ from sglang.multimodal_gen.runtime.platforms import current_platform
 if current_platform.is_mps():
     from .mps_fallback import norm_infer_native, rms_norm_fn_native
 
-    norm_infer = norm_infer_native
-    rms_norm_fn = rms_norm_fn_native
+    @maybe_wrap_jit_kernel_sglang_debug(
+        op_name="jit_kernel.diffusion.triton.norm_infer"
+    )
+    def norm_infer(
+        x: Tensor,
+        weight: Optional[Tensor],
+        bias: Optional[Tensor],
+        eps: float,
+        is_rms_norm: bool = False,
+        out: Optional[Tensor] = None,
+    ):
+        return norm_infer_native(x, weight, bias, eps, is_rms_norm, out)
 
-
-layer_norm_fn = maybe_wrap_jit_kernel_sglang_debug(
-    layer_norm_fn, "jit_kernel.diffusion.triton.layer_norm_fn"
-)
-norm_infer = maybe_wrap_jit_kernel_sglang_debug(
-    norm_infer, "jit_kernel.diffusion.triton.norm_infer"
-)
-rms_norm_fn = maybe_wrap_jit_kernel_sglang_debug(
-    rms_norm_fn, "jit_kernel.diffusion.triton.rms_norm_fn"
-)
+    @maybe_wrap_jit_kernel_sglang_debug(
+        op_name="jit_kernel.diffusion.triton.rms_norm_fn"
+    )
+    def rms_norm_fn(
+        x,
+        weight,
+        bias,
+        residual=None,
+        x1=None,
+        weight1=None,
+        bias1=None,
+        eps=1e-6,
+        dropout_p=0.0,
+        rowscale=None,
+        prenorm=False,
+        residual_in_fp32=False,
+        zero_centered_weight=False,
+        return_dropout_mask=False,
+        out_dtype=None,
+        out=None,
+        residual_out=None,
+    ):
+        return rms_norm_fn_native(
+            x,
+            weight,
+            bias,
+            residual,
+            x1,
+            weight1,
+            bias1,
+            eps,
+            dropout_p,
+            rowscale,
+            prenorm,
+            residual_in_fp32,
+            zero_centered_weight,
+            return_dropout_mask,
+            out_dtype,
+            out,
+            residual_out,
+        )
