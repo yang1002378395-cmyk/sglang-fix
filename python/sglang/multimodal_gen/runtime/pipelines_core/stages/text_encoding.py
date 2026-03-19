@@ -12,12 +12,7 @@ import torch
 from sglang.multimodal_gen.configs.models.encoders import BaseEncoderOutput
 from sglang.multimodal_gen.configs.pipeline_configs import FluxPipelineConfig
 from sglang.multimodal_gen.configs.pipeline_configs.flux import Flux2PipelineConfig
-from sglang.multimodal_gen.configs.pipeline_configs.qwen_image import (
-    QwenImagePipelineConfig,
-)
-from sglang.multimodal_gen.runtime.distributed import (
-    get_local_torch_device,
-)
+from sglang.multimodal_gen.runtime.distributed import get_local_torch_device
 from sglang.multimodal_gen.runtime.managers.forward_context import set_forward_context
 from sglang.multimodal_gen.runtime.pipelines_core.schedule_batch import Req
 from sglang.multimodal_gen.runtime.pipelines_core.stages.base import PipelineStage
@@ -266,23 +261,14 @@ class TextEncodingStage(PipelineStage):
                 attention_mask = torch.ones(input_ids.shape[:2], device=target_device)
             else:
                 attention_mask = text_inputs["attention_mask"]
-            encoder_kwargs = {
-                "input_ids": input_ids,
-                "attention_mask": attention_mask,
-                "output_hidden_states": True,
-            }
-            if not (isinstance(server_args.pipeline_config, QwenImagePipelineConfig)):
-                encoder_kwargs["use_cache"] = False
-
             with set_forward_context(current_timestep=0, attn_metadata=None):
-                outputs: BaseEncoderOutput = text_encoder(**encoder_kwargs)
-
-            postprocess_out = postprocess_func(outputs, text_inputs)
-            if isinstance(postprocess_out, tuple):
-                prompt_embeds, attention_mask = postprocess_out
-            else:
-                prompt_embeds = postprocess_out
-
+                outputs: BaseEncoderOutput = text_encoder(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    output_hidden_states=True,
+                    use_cache=False,
+                )
+            prompt_embeds = postprocess_func(outputs, text_inputs)
             if dtype is not None:
                 prompt_embeds = prompt_embeds.to(dtype=dtype)
 

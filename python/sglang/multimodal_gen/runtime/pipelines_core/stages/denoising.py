@@ -632,19 +632,11 @@ class DenoisingStage(PipelineStage):
             },
         )
 
-        prompt_attention_mask = _unwrap_singleton_tensor_list(
-            batch.prompt_attention_mask
-        )
-        negative_attention_mask = _unwrap_singleton_tensor_list(
-            batch.negative_attention_mask
-        )
-
         pos_cond_kwargs = self.prepare_extra_func_kwargs(
             getattr(self.transformer, "forward", self.transformer),
             {
                 "encoder_hidden_states_2": batch.clip_embedding_pos,
-                "encoder_attention_mask": prompt_attention_mask,
-                "encoder_hidden_states_mask": prompt_attention_mask,
+                "encoder_attention_mask": batch.prompt_attention_mask,
             }
             | server_args.pipeline_config.prepare_pos_cond_kwargs(
                 batch,
@@ -664,8 +656,7 @@ class DenoisingStage(PipelineStage):
                 getattr(self.transformer, "forward", self.transformer),
                 {
                     "encoder_hidden_states_2": batch.clip_embedding_neg,
-                    "encoder_attention_mask": negative_attention_mask,
-                    "encoder_hidden_states_mask": negative_attention_mask,
+                    "encoder_attention_mask": batch.negative_attention_mask,
                 }
                 | server_args.pipeline_config.prepare_neg_cond_kwargs(
                     batch,
@@ -879,28 +870,16 @@ class DenoisingStage(PipelineStage):
         server_args: ServerArgs,
         batch: Req,
     ):
-        use_true_cfg_scale = getattr(
-            server_args.pipeline_config, "use_true_cfg_scale", False
-        )
-
         if boundary_timestep is None or t_int >= boundary_timestep:
             # High-noise stage
             current_model = self.transformer
             model_to_offload = self.transformer_2
-            current_guidance_scale = (
-                batch.true_cfg_scale
-                if use_true_cfg_scale and batch.true_cfg_scale is not None
-                else batch.guidance_scale
-            )
+            current_guidance_scale = batch.guidance_scale
         else:
             # Low-noise stage
             current_model = self.transformer_2
             model_to_offload = self.transformer
-            current_guidance_scale = (
-                batch.true_cfg_scale
-                if use_true_cfg_scale and batch.true_cfg_scale is not None
-                else batch.guidance_scale_2
-            )
+            current_guidance_scale = batch.guidance_scale_2
 
         self._manage_device_placement(current_model, model_to_offload, server_args)
 
@@ -1470,16 +1449,6 @@ class DenoisingStage(PipelineStage):
 
             noise_pred = cfg_model_parallel_all_reduce(partial)
 
-            if getattr(server_args.pipeline_config, "apply_true_cfg_token_norm", False):
-                if cfg_rank == 0:
-                    assert noise_pred_cond is not None
-                    cond_norm = torch.norm(noise_pred_cond, dim=-1, keepdim=True)
-                else:
-                    cond_norm = torch.empty_like(noise_pred[..., :1])
-                cond_norm = get_cfg_group().broadcast(cond_norm, src=0)
-                noise_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
-                noise_pred = noise_pred * (cond_norm / noise_norm)
-
             if batch.cfg_normalization and float(batch.cfg_normalization) > 0:
                 factor = float(batch.cfg_normalization)
                 pred_f = noise_pred.float()
@@ -1521,11 +1490,6 @@ class DenoisingStage(PipelineStage):
             noise_pred = noise_pred_uncond + current_guidance_scale * (
                 noise_pred_cond - noise_pred_uncond
             )
-
-            if getattr(server_args.pipeline_config, "apply_true_cfg_token_norm", False):
-                cond_norm = torch.norm(noise_pred_cond, dim=-1, keepdim=True)
-                noise_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
-                noise_pred = noise_pred * (cond_norm / noise_norm)
 
             if batch.cfg_normalization and float(batch.cfg_normalization) > 0:
                 factor = float(batch.cfg_normalization)

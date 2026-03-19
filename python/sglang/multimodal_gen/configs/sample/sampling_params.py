@@ -745,12 +745,6 @@ class SamplingParams:
             help="Secondary guidance scale for dual-guidance models (e.g., Wan low-noise expert)",
         )
         add_argument(
-            "--true-cfg-scale",
-            type=float,
-            dest="true_cfg_scale",
-            help="Traditional classifier-free guidance scale for pipelines that separate true CFG from embedded guidance (e.g., Qwen-Image).",
-        )
-        add_argument(
             "--guidance-rescale",
             type=float,
             help="Guidance rescale factor",

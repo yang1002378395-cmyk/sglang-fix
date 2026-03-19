@@ -9,7 +9,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch import nn
 from torch.distributed import init_device_mesh
-from transformers import AutoModel, Qwen2_5_VLForConditionalGeneration
+from transformers import AutoModel
 from transformers.utils import SAFE_WEIGHTS_INDEX_NAME
 
 from sglang.multimodal_gen.configs.models import EncoderConfig, ModelConfig
@@ -96,13 +96,6 @@ class TextEncoderLoader(ComponentLoader):
             1 if component_model_path.rstrip("/").endswith("text_encoder_2") else 0
         )
         encoder_dtype = server_args.pipeline_config.text_encoder_precisions[encoder_idx]
-        if isinstance(server_args.pipeline_config, QwenImageEditPipelineConfig):
-            return Qwen2_5_VLForConditionalGeneration.from_pretrained(
-                component_model_path,
-                trust_remote_code=server_args.trust_remote_code,
-                revision=server_args.revision,
-                torch_dtype=PRECISION_TO_TYPE[encoder_dtype],
-            )
         return AutoModel.from_pretrained(
             component_model_path,
             trust_remote_code=server_args.trust_remote_code,

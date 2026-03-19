@@ -11,8 +11,7 @@ class QwenImageSamplingParams(SamplingParams):
     negative_prompt: str = " "
     num_frames: int = 1
     # Denoising stage
-    guidance_scale: float = 1.0
-    true_cfg_scale: float = 4.0
+    guidance_scale: float = 4.0
     num_inference_steps: int = 50
 
 
@@ -26,8 +25,8 @@ class QwenImage2512SamplingParams(QwenImageSamplingParams):
 @dataclass
 class QwenImageEditPlusSamplingParams(QwenImageSamplingParams):
     # Denoising stage
-    guidance_scale: float = 1.0
-    true_cfg_scale: float = 4.0
+    guidance_scale: float = 4.0
+    # true_cfg_scale: float = 4.0
     num_inference_steps: int = 40
 
 
@@ -39,8 +38,7 @@ class QwenImageLayeredSamplingParams(QwenImageSamplingParams):
     prompt: str = " "
     negative_prompt: str = " "
 
-    guidance_scale: float = 1.0
-    true_cfg_scale: float = 4.0
+    guidance_scale: float = 4.0
     num_inference_steps: int = 50
     cfg_normalize: bool = True
     use_en_prompt: bool = True

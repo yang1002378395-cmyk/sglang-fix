@@ -1034,8 +1034,8 @@ class QwenImageTransformer2DModel(CachableDiT, OffloadableDiTMixin):
         # Qwen/Qwen-Image-Edit-2511 carries `zero_cond_t` in HF config.json, but the
         # official diffusers transformer ignores it. Keep that parity for HF-loaded
         # checkpoints while preserving the explicit ComfyUI/custom-config path.
-        if hf_config.get("zero_cond_t") is not None:
-            self.zero_cond_t = False
+        # if hf_config.get("zero_cond_t") is not None:
+        #     self.zero_cond_t = False
         self.out_channels = out_channels or in_channels
         self.inner_dim = num_attention_heads * attention_head_dim
 

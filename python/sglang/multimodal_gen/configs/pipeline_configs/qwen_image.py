@@ -56,29 +56,6 @@ def qwen_image_postprocess_text(outputs, _text_inputs, drop_idx=34):
     return prompt_embeds
 
 
-def qwen_image_postprocess_text_with_mask(outputs, _text_inputs, drop_idx=34):
-    hidden_states = outputs.hidden_states[-1]
-    split_hidden_states = _extract_masked_hidden(
-        hidden_states, _text_inputs.attention_mask
-    )
-    split_hidden_states = [e[drop_idx:] for e in split_hidden_states]
-    attn_mask_list = [
-        torch.ones(e.size(0), dtype=torch.long, device=e.device)
-        for e in split_hidden_states
-    ]
-    max_seq_len = max([e.size(0) for e in split_hidden_states])
-    prompt_embeds = torch.stack(
-        [
-            torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))])
-            for u in split_hidden_states
-        ]
-    )
-    encoder_attention_mask = torch.stack(
-        [torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list]
-    )
-    return prompt_embeds, encoder_attention_mask
-
-
 def _normalize_prompt_list(prompt):
     return [prompt] if isinstance(prompt, str) else prompt
 
@@ -128,7 +105,6 @@ class QwenImagePipelineConfig(ImagePipelineConfig):
     """Configuration for the QwenImage pipeline."""
 
     should_use_guidance: bool = False
-    use_true_cfg_scale: bool = True
     task_type: ModelTaskType = ModelTaskType.T2I
 
     vae_tiling: bool = False
@@ -153,7 +129,7 @@ class QwenImagePipelineConfig(ImagePipelineConfig):
     )
 
     postprocess_text_funcs: tuple[Callable[[str], str], ...] = field(
-        default_factory=lambda: (qwen_image_postprocess_text_with_mask,)
+        default_factory=lambda: (qwen_image_postprocess_text,)
     )
     text_encoder_extra_args: list[dict] = field(
         default_factory=lambda: [
@@ -172,7 +148,7 @@ class QwenImagePipelineConfig(ImagePipelineConfig):
         prompt = batch.prompt if not neg else batch.negative_prompt
         if prompt:
             prompt_template_encode = "<|im_start|>system\nDescribe the key features of the input image (color, shape, size, texture, objects, background), then explain how the user's text instruction should alter or modify the image. Generate a new image that meets the user's requirements while maintaining consistency with the original input where appropriate.<|im_end|>\n<|im_start|>user\n<|vision_start|><|image_pad|><|vision_end|>{}<|im_end|>\n<|im_start|>assistant\n"
-            txt = prompt_template_encode.format(prompt)
+            txt = prompt_template_encode.format(batch.prompt)
             return dict(text=[txt], padding=True)
         else:
             return {}
@@ -288,7 +264,6 @@ class QwenImageEditPipelineConfig(QwenImagePipelineConfig):
     """Configuration for the QwenImageEdit pipeline."""
 
     task_type: ModelTaskType = ModelTaskType.I2I
-    apply_true_cfg_token_norm: bool = True
 
     def _prepare_edit_cond_kwargs(
         self, batch, prompt_embeds, rotary_emb, device, dtype
@@ -392,9 +367,10 @@ class QwenImageEditPipelineConfig(QwenImagePipelineConfig):
         )
 
     def calculate_condition_image_size(self, image, width, height) -> tuple[int, int]:
-        # Keep the original condition image for prompt encoding. The resized edit
-        # image used by VAE/DiT is already prepared separately via batch.vae_image.
-        return None
+        calculated_width, calculated_height, _ = calculate_dimensions(
+            1024 * 1024, width / height
+        )
+        return calculated_width, calculated_height
 
     def slice_noise_pred(self, noise, latents):
         # remove noise over input image
@@ -466,9 +442,10 @@ class QwenImageEditPlusPipelineConfig(QwenImageEditPipelineConfig):
         return new_images
 
     def calculate_condition_image_size(self, image, width, height) -> tuple[int, int]:
-        # Keep the original condition image for prompt encoding. The resized edit
-        # image used by VAE/DiT is already prepared separately via batch.vae_image.
-        return None
+        calculated_width, calculated_height, _ = calculate_dimensions(
+            CONDITION_IMAGE_SIZE, width / height
+        )
+        return calculated_width, calculated_height
 
     def calculate_vae_image_size(self, image, width, height) -> tuple[int, int]:
         calculated_width, calculated_height, _ = calculate_dimensions(

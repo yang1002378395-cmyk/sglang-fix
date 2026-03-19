@@ -230,23 +230,6 @@ class InputValidationStage(PipelineStage):
             batch.width = final_w
             batch.height = final_h
 
-    @staticmethod
-    def _has_negative_condition(batch: Req) -> bool:
-        return batch.negative_prompt is not None or bool(batch.negative_prompt_embeds)
-
-    def _configure_guidance_mode(self, batch: Req, server_args: ServerArgs) -> None:
-        has_neg = self._has_negative_condition(batch)
-        if getattr(server_args.pipeline_config, "use_true_cfg_scale", False):
-            scale = batch.true_cfg_scale
-            batch.do_classifier_free_guidance = (
-                scale is not None and scale > 1.0 and has_neg
-            )
-        else:
-            scale = batch.guidance_scale
-            batch.do_classifier_free_guidance = (
-                scale is not None and scale > 1.0 and has_neg
-            )
-
     def forward(
         self,
         batch: Req,
@@ -344,8 +327,6 @@ class InputValidationStage(PipelineStage):
             batch.height = batch.width * default_height // default_width
         elif batch.width is None:
             batch.width = batch.height * default_width // default_height
-
-        self._configure_guidance_mode(batch, server_args)
 
         return batch
 

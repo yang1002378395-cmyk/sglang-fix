@@ -14,7 +14,6 @@ from diffusers.models.modeling_outputs import AutoencoderKLOutput
 
 from sglang.multimodal_gen.configs.pipeline_configs.qwen_image import (
     qwen_image_postprocess_text,
-    qwen_image_postprocess_text_with_mask,
 )
 from sglang.multimodal_gen.runtime.distributed import get_local_torch_device
 from sglang.multimodal_gen.runtime.managers.forward_context import set_forward_context
@@ -119,8 +118,6 @@ class ImageEncodingStage(PipelineStage):
 
         all_prompt_embeds = []
         all_neg_prompt_embeds = []
-        all_prompt_attention_masks = []
-        all_neg_prompt_attention_masks = []
 
         for idx, prompt_images in enumerate(per_prompt_images):
             if not prompt_images:
@@ -181,34 +178,18 @@ class ImageEncodingStage(PipelineStage):
                             output_hidden_states=True,
                         )
 
-                prompt_embeds, prompt_attention_mask = (
-                    qwen_image_postprocess_text_with_mask(outputs, image_inputs, 64)
+                all_prompt_embeds.append(
+                    self.encoding_qwen_image_edit(outputs, image_inputs)
                 )
-                all_prompt_embeds.append(prompt_embeds)
-                all_prompt_attention_masks.append(prompt_attention_mask)
                 if batch.do_classifier_free_guidance:
-                    neg_prompt_embeds, neg_prompt_attention_mask = (
-                        qwen_image_postprocess_text_with_mask(
-                            neg_outputs, neg_image_inputs, 64
-                        )
+                    all_neg_prompt_embeds.append(
+                        self.encoding_qwen_image_edit(neg_outputs, neg_image_inputs)
                     )
-                    all_neg_prompt_embeds.append(neg_prompt_embeds)
-                    all_neg_prompt_attention_masks.append(neg_prompt_attention_mask)
 
         if all_prompt_embeds:
             batch.prompt_embeds.append(torch.cat(all_prompt_embeds, dim=0))
-            if batch.prompt_attention_mask is None:
-                batch.prompt_attention_mask = []
-            batch.prompt_attention_mask.append(
-                torch.cat(all_prompt_attention_masks, dim=0)
-            )
         if all_neg_prompt_embeds:
             batch.negative_prompt_embeds.append(torch.cat(all_neg_prompt_embeds, dim=0))
-            if batch.negative_attention_mask is None:
-                batch.negative_attention_mask = []
-            batch.negative_attention_mask.append(
-                torch.cat(all_neg_prompt_attention_masks, dim=0)
-            )
 
         self.offload_model()
 
@@ -296,7 +277,7 @@ class ImageVAEEncodingStage(PipelineStage):
                             num_frames - 1,
                             image.shape[3],
                             image.shape[4],
-                        ),
+                            ),
                     ],
                     dim=2,
                 )
@@ -307,8 +288,8 @@ class ImageVAEEncodingStage(PipelineStage):
             # Setup VAE precision
             vae_dtype = PRECISION_TO_TYPE[server_args.pipeline_config.vae_precision]
             vae_autocast_enabled = (
-                vae_dtype != torch.float32
-            ) and not server_args.disable_autocast
+                                       vae_dtype != torch.float32
+                                   ) and not server_args.disable_autocast
 
             # Encode Image
             with torch.autocast(
