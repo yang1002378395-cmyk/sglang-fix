@@ -2,18 +2,18 @@
 # Install the dependency in CI.
 #
 # Structure (see section banners below):
-#   Configuration & timing
-#   Host / runner detection (arch, Blackwell, pip vs uv)
-#   Kill existing processes
-#   Install apt packages
-#   Python site hygiene & protoc
-#   Pip / uv toolchain & stale package cleanup
-#   Uninstall Flashinfer
-#   Core package
-#   Download flashinfer artifacts
-#   Extra dependency
-#   Fix other dependencies
-#   Verify imports & prepare runner
+# - Configuration & timing
+# - Host / runner detection (arch, Blackwell, pip vs uv)
+# - Kill existing processes
+# - Install apt packages
+# - Python package site hygiene & install protoc
+# - Pip / uv toolchain & stale package cleanup
+# - Uninstall Flashinfer
+# - Install core package
+# - Download flashinfer artifacts
+# - Install extra dependency
+# - Fix other dependencies
+# - Verify imports & prepare runner
 set -euxo pipefail
 
 # ------------------------------------------------------------------------------
@@ -114,7 +114,7 @@ apt-get install -y --no-install-recommends "${CI_APT_PACKAGES[@]}" || {
 ci_install_mark_step "Install apt packages"
 
 # ------------------------------------------------------------------------------
-# Python site hygiene & protoc
+# Python package site hygiene & install protoc
 # ------------------------------------------------------------------------------
 # Clear torch compilation cache
 python3 -c 'import os, shutil, tempfile, getpass; cache_dir = os.environ.get("TORCHINDUCTOR_CACHE_DIR") or os.path.join(tempfile.gettempdir(), "torchinductor_" + getpass.getuser()); shutil.rmtree(cache_dir, ignore_errors=True)'
@@ -135,7 +135,7 @@ fi
 # Install protoc
 bash "${SCRIPT_DIR}/../utils/install_protoc.sh"
 
-ci_install_mark_step "Python site hygiene & protoc"
+ci_install_mark_step "Python package site hygiene & install protoc"
 
 # ------------------------------------------------------------------------------
 # Pip / uv toolchain & stale package cleanup
@@ -201,7 +201,7 @@ $PIP_UNINSTALL_CMD opencv-python opencv-python-headless $PIP_UNINSTALL_SUFFIX ||
 ci_install_mark_step "Uninstall Flashinfer"
 
 # ------------------------------------------------------------------------------
-# Core package
+# Install core package
 # ------------------------------------------------------------------------------
 # Install the main package
 EXTRAS="dev"
@@ -253,7 +253,7 @@ $PIP_CMD install sglang-router $PIP_INSTALL_SUFFIX
 # Show current packages
 $PIP_CMD list
 
-ci_install_mark_step "core package"
+ci_install_mark_step "Install core package"
 
 # ------------------------------------------------------------------------------
 # Download flashinfer artifacts
@@ -271,7 +271,7 @@ bash "${SCRIPT_DIR}/ci_download_flashinfer_cubin.sh"
 ci_install_mark_step "Download flashinfer artifacts"
 
 # ------------------------------------------------------------------------------
-# Extra dependency
+# Install extra dependency
 # ------------------------------------------------------------------------------
 # Install other python dependencies
 if [ "$CU_VERSION" = "cu130" ]; then
@@ -289,7 +289,7 @@ if [ "$IS_BLACKWELL" != "1" ]; then
 fi
 $PIP_CMD uninstall xformers || true
 
-ci_install_mark_step "extra dependency"
+ci_install_mark_step "Install extra dependency"
 
 # ------------------------------------------------------------------------------
 # Fix other dependencies
