@@ -18,11 +18,6 @@ _is_musa = current_platform.is_musa()
 if _is_cuda:
     from sgl_kernel import fused_add_rmsnorm, rmsnorm
 
-    try:
-        from quack.rmsnorm import rmsnorm_fwd as quack_rmsnorm_fwd
-    except ImportError:
-        quack_rmsnorm_fwd = None
-
 if _is_npu:
     import torch_npu
 
@@ -76,9 +71,6 @@ class RMSNorm(CustomOp):
     def _forward_cuda_fp32_rmsnorm(self, x: torch.Tensor) -> torch.Tensor:
         # Avoid wrap_triton in torch.compile: it specializes on a fresh
         # constant_args_idx every call and eventually falls back to eager.
-        if quack_rmsnorm_fwd is not None:
-            out = quack_rmsnorm_fwd(x, self.weight.data, eps=self.variance_epsilon)
-            return out[0] if isinstance(out, tuple) else out
         return self.forward_native(x)
 
     def forward_cuda(

@@ -63,7 +63,7 @@ This skill focuses on SGLang Diffusion (`sglang.multimodal_gen`) kernel fusion p
 
 1. sgl-kernel RMSNorm and fused add RMSNorm
 - Location: `layernorm.py`
-- Behavior: CUDA uses `sgl_kernel.fused_add_rmsnorm` and `sgl_kernel.rmsnorm` for the standard bf16/fp16 paths. For the Z-Image fp32 `32x2560` path under `torch.compile`, avoid `wrap_triton` and use a compile-safe backend such as `quack.rmsnorm_fwd`. `hidden_size <= 128` uses Triton one-pass. ROCm falls back to native.
+- Behavior: CUDA uses `sgl_kernel.fused_add_rmsnorm` and `sgl_kernel.rmsnorm` for the standard bf16/fp16 paths. For the Z-Image fp32 `32x2560` path under `torch.compile`, avoid `wrap_triton` and use the native fp32 path instead. `hidden_size <= 128` uses Triton one-pass. ROCm falls back to native.
 
 2. Attention backend selection (FlashAttention, Sage, SDPA)
 - Locations: `platforms/cuda.py`, `attention/selector.py`, `docs/diffusion/performance/attention_backends.md`
