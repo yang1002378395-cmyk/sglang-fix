@@ -42,7 +42,7 @@ INSTALL_SCRIPT = (
 )
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 30000
-HEALTH_TIMEOUT = 1800  # seconds (30 min for large models + model download)
+HEALTH_TIMEOUT = 2400  # seconds (40 min — FLUX.2-dev needs ~10 min download + torch.compile)
 REQUEST_TIMEOUT = 1200  # seconds
 GPU_CLEAR_WAIT = 15  # seconds between framework runs
 
