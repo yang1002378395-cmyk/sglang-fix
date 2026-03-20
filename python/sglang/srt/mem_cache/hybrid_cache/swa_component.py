@@ -62,14 +62,13 @@ class SWAComponent(TreeComponent):
         total_prefix_len: int,
         value_slice: torch.Tensor,
         params: InsertParams,
-    ) -> None:
+    ) -> int:
         if params.prev_prefix_len >= total_prefix_len + prefix_len:
-            return
+            return prefix_len
 
         is_tombstone = node.component_value(self.name) is None
         if not is_tombstone:
-            self.cache.token_to_kv_pool_allocator.free(value_slice)
-            return
+            return prefix_len
 
         swa_evicted_seqlen = params.swa_evicted_seqlen
         assert (
@@ -80,31 +79,28 @@ class SWAComponent(TreeComponent):
         ), f"{self.name}: swa_evicted_seqlen must be page-aligned, {swa_evicted_seqlen=}"
 
         if swa_evicted_seqlen <= total_prefix_len:
-            # Branch 1: all swa tokens of value[:prefix_len] are not evicted, so we can insert it to the tree directly
-            # Free full tokens in the original tree node
+            # Branch 1: entire value_slice is within SWA window — recover
             self.cache.token_to_kv_pool_allocator.free(node.full_value)
-            # Overwrite the new value in request to the tree node
             node.full_value = value_slice.clone()
             swa_value = self._translate_full_to_swa(node.full_value)
             node.set_component_value(self.name, swa_value)
             self.cache.lru_lists[self.name].insert_mru(node)
             self.cache.component_evictable_size_[self.name] += len(swa_value)
+            return 0
         elif swa_evicted_seqlen < total_prefix_len + prefix_len:
-            # Branch 2: part of swa tokens of value[:prefix_len] are evicted, so we need to split the node and insert the value to new node
+            # Branch 2: value_slice[start_idx:] is within SWA window — partial recover
             start_idx = swa_evicted_seqlen - total_prefix_len
             self.cache.token_to_kv_pool_allocator.free(node.full_value[start_idx:])
             self.cache._split_node(node.key, node, start_idx)
-            # Here node is the new node after split, so we can overwrite the value to the new node
-            # The old node is still swa tombstone and the full token is not freed
             node.full_value = value_slice[start_idx:].clone()
-            self.cache.token_to_kv_pool_allocator.free(value_slice[:start_idx])
             swa_value = self._translate_full_to_swa(node.full_value)
             node.set_component_value(self.name, swa_value)
             self.cache.lru_lists[self.name].insert_mru(node)
             self.cache.component_evictable_size_[self.name] += len(swa_value)
+            return start_idx
         else:
-            # Branch 3: all swa tokens of value[:prefix_len] are evicted, so we don't need to update the node
-            self.cache.token_to_kv_pool_allocator.free(value_slice)
+            # Branch 3: entire value_slice is outside SWA window — not consumed
+            return prefix_len
 
     def get_tombstone_prefix_len_for_insert(
         self, total_prefix_len: int, new_key_len: int, params: InsertParams

@@ -77,18 +77,6 @@ class MambaComponent(TreeComponent):
 
         return result._replace(mamba_branching_seqlen=branching_seqlen)
 
-    def update_component_on_insert_overlap(
-        self,
-        node: HybridTreeNode,
-        prefix_len: int,
-        total_prefix_len: int,
-        value_slice: torch.Tensor,
-        params: InsertParams,
-    ) -> None:
-        if params.prev_prefix_len < total_prefix_len + prefix_len:
-            start = max(0, params.prev_prefix_len - total_prefix_len)
-            self.cache.token_to_kv_pool_allocator.free(value_slice[start:])
-
     def commit_insert_component_data(
         self,
         node: HybridTreeNode,

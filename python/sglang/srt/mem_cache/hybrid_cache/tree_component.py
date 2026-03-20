@@ -119,16 +119,14 @@ class TreeComponent(ABC):
         total_prefix_len: int,
         value_slice: torch.Tensor,
         params: InsertParams,
-    ) -> None:
-        """Called per-node when an insert's key overlaps an existing node,
-        allowing the component to attach or extend its own data.
-        - Full: no-op.
-        - SWA: if the insert covers the swa_evicted_seqlen boundary, clones
-          the relevant value_slice into the node's swa component value,
-          splits the node if needed, and updates LRU / evictable sizes.
-        - Mamba: frees the portion of memory beyond the overlap point so the
-          new insert can replace it."""
-        pass
+    ) -> int:
+        """Called per-node when an insert's key overlaps an existing node.
+        Returns the index within value_slice from which this component
+        consumed (took ownership of) the underlying KV pool slots.
+        Returns prefix_len if nothing was consumed (default).
+        _insert_helper uses this to free only the non-consumed duplicate
+        portion: value_slice[dup_start:consumed_from]."""
+        return prefix_len
 
     def get_tombstone_prefix_len_for_insert(
         self, total_prefix_len: int, new_key_len: int, params: InsertParams

@@ -591,13 +591,22 @@ class HybridRadixCache(BasePrefixCache):
             if prefix_len < len(node.key):
                 node = self._split_node(node.key, node, prefix_len)
 
+            value_slice = value[:prefix_len]
+            consumed_from = prefix_len
             for component in self.components.values():
-                component.update_component_on_insert_overlap(
+                comp_consumed_from = component.update_component_on_insert_overlap(
                     node,
                     prefix_len,
                     total_prefix_length,
-                    value[:prefix_len],
+                    value_slice,
                     params,
+                )
+                consumed_from = min(consumed_from, comp_consumed_from)
+
+            dup_start = max(0, params.prev_prefix_len - total_prefix_length)
+            if dup_start < consumed_from:
+                self.token_to_kv_pool_allocator.free(
+                    value_slice[dup_start:consumed_from]
                 )
 
             total_prefix_length += prefix_len
