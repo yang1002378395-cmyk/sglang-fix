@@ -2,20 +2,17 @@
 # Ensure protoc is installed for router build (gRPC protobuf compilation).
 set -euxo pipefail
 
-INSTALL_PROTOC=0
-if command -v protoc >/dev/null 2>&1; then
-    if protoc --version >/dev/null 2>&1; then
-        echo "protoc already installed: $(protoc --version)"
-        exit 0
-    else
-        echo "protoc found but not runnable, reinstalling..."
-        INSTALL_PROTOC=1
-    fi
-else
-    INSTALL_PROTOC=1
+if command -v protoc >/dev/null 2>&1 && protoc --version >/dev/null 2>&1; then
+    echo "protoc already installed: $(protoc --version)"
+    exit 0
 fi
 
-echo "Installing protoc..."
+if command -v protoc >/dev/null 2>&1; then
+    echo "protoc found but not runnable, reinstalling..."
+else
+    echo "protoc not found, installing..."
+fi
+
 ARCH=$(uname -m)
 
 if command -v apt-get &> /dev/null; then
