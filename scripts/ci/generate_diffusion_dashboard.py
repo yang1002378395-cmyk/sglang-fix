@@ -167,6 +167,29 @@ def generate_dashboard(
     current_cases = _extract_case_results(current)
     case_ids = list(current_cases.keys())
 
+    # ---- Regression detection ----
+    REGRESSION_THRESHOLD = 0.05  # 5%
+    regressions: list[str] = []
+    if history:
+        prev_cases = _extract_case_results(history[0])
+        for cid in case_ids:
+            for fw in ("sglang", "vllm-omni"):
+                cur = current_cases.get(cid, {}).get(fw)
+                prev = prev_cases.get(cid, {}).get(fw)
+                if cur and prev and prev > 0:
+                    pct = (cur - prev) / prev
+                    if pct > REGRESSION_THRESHOLD:
+                        regressions.append(
+                            f"**{cid}** ({fw}): {prev:.2f}s -> {cur:.2f}s "
+                            f"(+{pct*100:.1f}%)"
+                        )
+
+    if regressions:
+        lines.append("> [!WARNING]\n> **Performance Regression Detected**\n>")
+        for reg in regressions:
+            lines.append(f"> - {reg}")
+        lines.append("\n")
+
     # Discover all frameworks present in results
     all_frameworks = []
     seen_fw = set()
