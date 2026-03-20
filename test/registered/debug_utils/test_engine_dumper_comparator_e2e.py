@@ -15,7 +15,6 @@ so the YAML only needs ``dumper.dump(...)`` calls.
 
 import os
 import subprocess
-import sys
 import tempfile
 from pathlib import Path
 from typing import Optional
@@ -32,7 +31,6 @@ from sglang.test.ci.ci_register import register_amd_ci, register_cuda_ci
 from sglang.test.test_utils import (
     DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
     DEFAULT_URL_FOR_TEST,
-    is_in_amd_ci,
     popen_launch_server,
 )
 
@@ -278,8 +276,6 @@ def _run_server_and_generate(
         "DUMPER_EXP_NAME": EXP_NAME,
         "DUMPER_SERVER_PORT": "reuse",
     }
-    if is_in_amd_ci():
-        env["SGLANG_USE_AITER"] = "0"
 
     server_args: list[str] = [
         "--tp",
@@ -291,8 +287,6 @@ def _run_server_and_generate(
         "--disable-cuda-graph",
         "--disable-radix-cache",
     ]
-    if is_in_amd_ci():
-        server_args.extend(["--attention-backend", "triton"])
     if extra_server_args:
         server_args.extend(extra_server_args)
 
@@ -347,4 +341,4 @@ def _save_comparator_output(*, stdout: str, stderr: str) -> Path:
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main([__file__, "-v"]))
+    pytest.main([__file__, "-v"])
