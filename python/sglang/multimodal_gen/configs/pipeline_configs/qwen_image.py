@@ -175,12 +175,25 @@ class QwenImagePipelineConfig(ImagePipelineConfig):
             return batch.true_cfg_scale
         return guidance_scale
 
-    def should_rescale_true_cfg_noise(self, batch) -> bool:
-        return (
-            batch.true_cfg_scale is not None
-            and batch.true_cfg_scale > 1.0
-            and batch.do_classifier_free_guidance
-        )
+    def postprocess_cfg_noise(
+        self,
+        batch,
+        noise_pred: torch.Tensor,
+        noise_pred_cond: torch.Tensor,
+    ) -> torch.Tensor:
+        # Qwen-Image follows the official diffusers true-CFG behavior:
+        # after combining cond/uncond with true_cfg_scale, match the per-token norm
+        # back to the conditional branch.
+        if (
+            batch.true_cfg_scale is None
+            or batch.true_cfg_scale <= 1.0
+            or not batch.do_classifier_free_guidance
+        ):
+            return noise_pred
+
+        cond_norm = torch.norm(noise_pred_cond, dim=-1, keepdim=True)
+        noise_norm = torch.norm(noise_pred, dim=-1, keepdim=True).clamp_min(1e-12)
+        return noise_pred * (cond_norm / noise_norm)
 
     def prepare_image_processor_kwargs(self, batch, neg=False):
         prompt = batch.prompt if not neg else batch.negative_prompt

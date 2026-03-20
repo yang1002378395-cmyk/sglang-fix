@@ -245,8 +245,15 @@ class PipelineConfig:
     def get_classifier_free_guidance_scale(self, batch, guidance_scale: float) -> float:
         return guidance_scale
 
-    def should_rescale_true_cfg_noise(self, batch) -> bool:
-        return False
+    def postprocess_cfg_noise(
+        self,
+        batch,
+        noise_pred: torch.Tensor,
+        noise_pred_cond: torch.Tensor,
+    ) -> torch.Tensor:
+        # Model-specific CFG variants can override this hook
+        # e.g. Qwen-Image's true-CFG norm matching.
+        return noise_pred
 
     ## For ImageVAEEncodingStage
     def preprocess_condition_image(
