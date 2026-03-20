@@ -247,16 +247,20 @@ class OpenAIServingCompletion(OpenAIServingBase):
                     total_output_logprobs = content["meta_info"][
                         "output_token_logprobs_length"
                     ]
-                    logprobs = to_openai_style_logprobs(
-                        input_token_logprobs=input_token_logprobs,
-                        input_top_logprobs=input_top_logprobs,
-                        output_token_logprobs=content["meta_info"][
-                            "output_token_logprobs"
-                        ][n_prev_token:total_output_logprobs],
-                        output_top_logprobs=content["meta_info"].get(
-                            "output_top_logprobs", []
-                        )[n_prev_token:total_output_logprobs],
-                    )
+                    if (
+                        n_prev_token < total_output_logprobs
+                        or input_token_logprobs is not None
+                    ):
+                        logprobs = to_openai_style_logprobs(
+                            input_token_logprobs=input_token_logprobs,
+                            input_top_logprobs=input_top_logprobs,
+                            output_token_logprobs=content["meta_info"][
+                                "output_token_logprobs"
+                            ][n_prev_token:total_output_logprobs],
+                            output_top_logprobs=content["meta_info"].get(
+                                "output_top_logprobs", []
+                            )[n_prev_token:total_output_logprobs],
+                        )
                     n_prev_tokens[index] = total_output_logprobs
 
                 # Generate delta
