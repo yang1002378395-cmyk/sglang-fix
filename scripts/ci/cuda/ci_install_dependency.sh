@@ -1,11 +1,46 @@
 #!/bin/bash
 # Install the dependency in CI.
+#
+# Structure (see section banners below):
+#   Configuration & timing
+#   Host / runner detection (arch, Blackwell, pip vs uv)
+#   Kill existing processes
+#   Install apt packages
+#   Python site hygiene & protoc
+#   Pip / uv toolchain & stale package cleanup
+#   Uninstall Flashinfer
+#   Core package
+#   Download flashinfer artifacts
+#   Extra dependency
+#   Fix other dependencies
+#   Verify imports & prepare runner
 set -euxo pipefail
 
+# ------------------------------------------------------------------------------
+# Configuration & timing
+# ------------------------------------------------------------------------------
 # Set up environment variables
 CU_VERSION="cu129"
 OPTIONAL_DEPS="${1:-}"
 
+SECONDS=0
+_CI_MARK_PREV=${SECONDS}
+
+ci_install_mark_step() {
+    local label=$1
+    local now=${SECONDS}
+    local step=$((now - _CI_MARK_PREV))
+    printf '[ci_install_dependency] %-50s +%5ss (step) %6ss (total) %s\n' \
+        "done: ${label}" "${step}" "${now}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    _CI_MARK_PREV=${now}
+}
+
+echo "[ci_install_dependency] START $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+ci_install_mark_step "Configuration"
+
+# ------------------------------------------------------------------------------
+# Host / runner detection (CPU arch, Blackwell, USE_UV)
+# ------------------------------------------------------------------------------
 # Detect CPU architecture (x86_64 or aarch64)
 ARCH=$(uname -m)
 echo "Detected architecture: ${ARCH}"
@@ -41,11 +76,20 @@ fi
 case "$(printf '%s' "$USE_UV" | tr '[:upper:]' '[:lower:]')" in 1 | true | yes) USE_UV=1 ;; *) USE_UV=0 ;; esac
 echo "USE_UV=${USE_UV}"
 
+ci_install_mark_step "Host / runner detection"
+
+# ------------------------------------------------------------------------------
 # Kill existing processes
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+# ------------------------------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "${SCRIPT_DIR}/../../killall_sglang.sh"
 echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}"
 
+ci_install_mark_step "Kill existing processes"
+
+# ------------------------------------------------------------------------------
+# Install apt packages
+# ------------------------------------------------------------------------------
 # Install apt packages (including python3/pip which may be missing on some runners)
 # Use --no-install-recommends and ignore errors from unrelated broken packages on the runner
 # The NVIDIA driver packages may have broken dependencies that are unrelated to these packages
@@ -67,6 +111,11 @@ apt-get install -y --no-install-recommends "${CI_APT_PACKAGES[@]}" || {
     echo "All required packages are already installed, continuing..."
 }
 
+ci_install_mark_step "Install apt packages"
+
+# ------------------------------------------------------------------------------
+# Python site hygiene & protoc
+# ------------------------------------------------------------------------------
 # Clear torch compilation cache
 python3 -c 'import os, shutil, tempfile, getpass; cache_dir = os.environ.get("TORCHINDUCTOR_CACHE_DIR") or os.path.join(tempfile.gettempdir(), "torchinductor_" + getpass.getuser()); shutil.rmtree(cache_dir, ignore_errors=True)'
 
@@ -74,7 +123,7 @@ python3 -c 'import os, shutil, tempfile, getpass; cache_dir = os.environ.get("TO
 SITE_PACKAGES=$(python3 -c "import site; print(site.getsitepackages()[0])")
 if [ -d "$SITE_PACKAGES" ]; then
     { set +x; } 2>/dev/null
-    find "$SITE_PACKAGES" -maxdepth 1 -name "*.dist-info" -type d | while read d; do
+    find "$SITE_PACKAGES" -maxdepth 1 -name "*.dist-info" -type d | while read -r d; do
         if [ ! -f "$d/METADATA" ]; then
             echo "Removing broken dist-info: $d"
             rm -rf "$d"
@@ -86,6 +135,11 @@ fi
 # Install protoc
 bash "${SCRIPT_DIR}/../utils/install_protoc.sh"
 
+ci_install_mark_step "Python site hygiene & protoc"
+
+# ------------------------------------------------------------------------------
+# Pip / uv toolchain & stale package cleanup
+# ------------------------------------------------------------------------------
 # Install pip and uv (use python3 -m pip for robustness since some runners only have pip3)
 python3 -m pip install --upgrade pip
 
@@ -107,6 +161,11 @@ fi
 # Clean up existing installations
 $PIP_UNINSTALL_CMD sgl-kernel sglang-kernel sglang sgl-fa4 flash-attn-4 $PIP_UNINSTALL_SUFFIX || true
 
+ci_install_mark_step "Pip / uv toolchain & stale package cleanup"
+
+# ------------------------------------------------------------------------------
+# Uninstall Flashinfer
+# ------------------------------------------------------------------------------
 # Keep flashinfer packages installed if version matches to avoid re-downloading:
 # - flashinfer-cubin: 150+ MB, plus extra cubins from ci_download_flashinfer_cubin.sh
 # - flashinfer-jit-cache: 1.2+ GB, by far the largest download in CI
@@ -139,6 +198,11 @@ FLASHINFER_UNINSTALL="flashinfer-python"
 $PIP_UNINSTALL_CMD $FLASHINFER_UNINSTALL $PIP_UNINSTALL_SUFFIX || true
 $PIP_UNINSTALL_CMD opencv-python opencv-python-headless $PIP_UNINSTALL_SUFFIX || true
 
+ci_install_mark_step "Uninstall Flashinfer"
+
+# ------------------------------------------------------------------------------
+# Core package
+# ------------------------------------------------------------------------------
 # Install the main package
 EXTRAS="dev"
 if [ -n "$OPTIONAL_DEPS" ]; then
@@ -189,6 +253,11 @@ $PIP_CMD install sglang-router $PIP_INSTALL_SUFFIX
 # Show current packages
 $PIP_CMD list
 
+ci_install_mark_step "core package"
+
+# ------------------------------------------------------------------------------
+# Download flashinfer artifacts
+# ------------------------------------------------------------------------------
 # Download flashinfer jit cache
 UNINSTALL_JIT_CACHE="$UNINSTALL_JIT_CACHE" \
     FLASHINFER_PYTHON_REQUIRED="$FLASHINFER_PYTHON_REQUIRED" \
@@ -196,10 +265,14 @@ UNINSTALL_JIT_CACHE="$UNINSTALL_JIT_CACHE" \
     PIP_CMD="$PIP_CMD" \
     PIP_INSTALL_SUFFIX="$PIP_INSTALL_SUFFIX" \
     bash "${SCRIPT_DIR}/ci_download_flashinfer_jit_cache.sh"
-
 # Download flashinfer cubins
 bash "${SCRIPT_DIR}/ci_download_flashinfer_cubin.sh"
 
+ci_install_mark_step "Download flashinfer artifacts"
+
+# ------------------------------------------------------------------------------
+# Extra dependency
+# ------------------------------------------------------------------------------
 # Install other python dependencies
 if [ "$CU_VERSION" = "cu130" ]; then
     NVRTC_SPEC="nvidia-cuda-nvrtc"
@@ -216,7 +289,12 @@ if [ "$IS_BLACKWELL" != "1" ]; then
 fi
 $PIP_CMD uninstall xformers || true
 
-# Fix dependencies: CUDA version mismatch between torch and torchaudio.
+ci_install_mark_step "extra dependency"
+
+# ------------------------------------------------------------------------------
+# Fix other dependencies
+# ------------------------------------------------------------------------------
+# Fix CUDA version mismatch between torch and torchaudio.
 # PyPI's torch 2.9.1 bundles cu128 but torchaudio from pytorch.org/cu129 uses cu129.
 # This mismatch causes torchaudio's C extension to fail loading, producing:
 #   "partially initialized module 'torchaudio' has no attribute 'lib'"
@@ -248,6 +326,11 @@ else
     $PIP_CMD install nvidia-cudnn-cu12==9.16.0.29 $PIP_INSTALL_SUFFIX
 fi
 
+ci_install_mark_step "Fix other dependencies"
+
+# ------------------------------------------------------------------------------
+# Verify imports & prepare runner
+# ------------------------------------------------------------------------------
 # Show current packages
 $PIP_CMD list
 python3 -c "import torch; print(torch.version.cuda)"
@@ -255,3 +338,7 @@ python3 -c "import cutlass; import cutlass.cute;"
 
 # Prepare the CI runner (cleanup HuggingFace cache, etc.)
 bash "${SCRIPT_DIR}/prepare_runner.sh"
+
+ci_install_mark_step "Verify imports & prepare runner"
+
+printf '[ci_install_dependency] FINISH total=%ss %s\n' "${SECONDS}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
