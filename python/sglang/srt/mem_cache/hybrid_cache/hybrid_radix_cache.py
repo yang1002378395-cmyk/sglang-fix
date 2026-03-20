@@ -617,23 +617,6 @@ class HybridRadixCache(BasePrefixCache):
 
         is_new_leaf = False
         if len(key):
-            tombstone_len = max(
-                (
-                    comp.get_tombstone_prefix_len_for_insert(
-                        total_prefix_length, len(key), params
-                    )
-                    for comp in self.components.values()
-                ),
-                default=0,
-            )
-            if tombstone_len > 0:
-                node = self._add_new_node(
-                    node, key[:tombstone_len], value[:tombstone_len]
-                )
-                total_prefix_length += tombstone_len
-                key = key[tombstone_len:]
-                value = value[tombstone_len:]
-
             target_node = self._add_new_node(node, key, value)
             is_new_leaf = True
         else:

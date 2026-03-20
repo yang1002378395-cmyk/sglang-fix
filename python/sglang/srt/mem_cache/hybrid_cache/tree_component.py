@@ -128,17 +128,6 @@ class TreeComponent(ABC):
         portion: value_slice[dup_start:consumed_from]."""
         return prefix_len
 
-    def get_tombstone_prefix_len_for_insert(
-        self, total_prefix_len: int, new_key_len: int, params: InsertParams
-    ) -> int:
-        """Return the component-specific prefix length that already has data,
-        so the insert logic knows where the tombstone region begins.
-        - Full & Mamba: always 0 (no tombstone contribution).
-        - SWA: if swa_evicted_seqlen falls within the current insert range,
-          returns that position so nodes before it are treated as tombstones
-          (no full KV data, only swa component data)."""
-        return 0
-
     def commit_insert_component_data(
         self,
         node: HybridTreeNode,
@@ -149,8 +138,12 @@ class TreeComponent(ABC):
         """Finalize component data on the target (leaf) node after the insert
         walk completes. Called once per insert.
         - Full: no-op (full data is handled by _add_new_node).
-        - SWA: for new leaves, sets the swa component value to full_value,
-          inserts into the swa LRU list, and increments evictable size.
+        - SWA: for new leaves, checks whether the node straddles the SWA
+          eviction boundary (swa_evicted_seqlen). If so, splits the node
+          via _split_node — the parent becomes a tombstone (no SWA) and the
+          child (the deeper portion) receives SWA data. If the entire node
+          is within the window, sets SWA directly. If entirely outside,
+          leaves SWA as None (tombstone).
         - Mamba: sets the mamba component value from params, inserts into
           mamba LRU list, and increments evictable size. If the node already
           has mamba data, resets its LRU position instead."""

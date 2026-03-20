@@ -102,17 +102,6 @@ class SWAComponent(TreeComponent):
             # Branch 3: entire value_slice is outside SWA window — not consumed
             return prefix_len
 
-    def get_tombstone_prefix_len_for_insert(
-        self, total_prefix_len: int, new_key_len: int, params: InsertParams
-    ) -> int:
-        swa_evicted_seqlen = params.swa_evicted_seqlen
-        if (
-            swa_evicted_seqlen > total_prefix_len
-            and swa_evicted_seqlen < total_prefix_len + new_key_len
-        ):
-            return swa_evicted_seqlen - total_prefix_len
-        return 0
-
     def commit_insert_component_data(
         self,
         node: HybridTreeNode,
@@ -120,7 +109,22 @@ class SWAComponent(TreeComponent):
         params: InsertParams,
         result: InsertResult,
     ) -> None:
-        if is_new_leaf:
+        if not is_new_leaf:
+            return
+
+        node_start = result.prefix_len
+        split_pos = params.swa_evicted_seqlen - node_start
+
+        if split_pos <= 0:
+            swa_value = self._translate_full_to_swa(node.full_value)
+            node.set_component_value(self.name, swa_value)
+            self.cache.lru_lists[self.name].insert_mru(node)
+            self.cache.component_evictable_size_[self.name] += len(swa_value)
+        elif split_pos < len(node.key):
+            # Node straddles the SWA eviction boundary
+            # Split into parent (tombstone, no SWA) and child (with SWA)
+            # After _split_node, `node` becomes the child
+            self.cache._split_node(node.key, node, split_pos)
             swa_value = self._translate_full_to_swa(node.full_value)
             node.set_component_value(self.name, swa_value)
             self.cache.lru_lists[self.name].insert_mru(node)
