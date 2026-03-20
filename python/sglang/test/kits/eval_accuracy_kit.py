@@ -7,6 +7,16 @@ from sglang.test.few_shot_gsm8k import run_eval as run_eval_gsm8k
 from sglang.test.run_eval import run_eval
 from sglang.test.test_utils import is_in_amd_ci, is_in_ci, write_github_step_summary
 
+_THRESHOLD_NOT_SET = float("nan")
+
+
+def _check_accept_length(test_case, base_url, threshold):
+    """Check speculative decoding accept length from server info."""
+    server_info = requests.get(base_url + "/get_server_info").json()
+    avg_spec_accept_length = server_info["internal_states"][0]["avg_spec_accept_length"]
+    print(f"{avg_spec_accept_length=}")
+    test_case.assertGreater(avg_spec_accept_length, threshold)
+
 
 class GSM8KMixin:
     """Mixin for few-shot GSM8K evaluation.
@@ -16,12 +26,16 @@ class GSM8KMixin:
         gsm8k_accuracy_thres: float
     """
 
-    gsm8k_accuracy_thres: float
+    gsm8k_accuracy_thres: float = _THRESHOLD_NOT_SET
     gsm8k_accept_length_thres: Optional[float] = None
     gsm8k_num_questions: int = 200
     gsm8k_parallel: int = 128
 
     def test_gsm8k(self):
+        assert (
+            self.gsm8k_accuracy_thres == self.gsm8k_accuracy_thres
+        ), f"{type(self).__name__} must set gsm8k_accuracy_thres"
+
         requests.get(self.base_url + "/flush_cache")
 
         args = SimpleNamespace(
@@ -38,12 +52,7 @@ class GSM8KMixin:
         self.assertGreaterEqual(metrics["accuracy"], self.gsm8k_accuracy_thres)
 
         if self.gsm8k_accept_length_thres is not None:
-            server_info = requests.get(self.base_url + "/server_info")
-            avg_spec_accept_length = server_info.json()["internal_states"][0][
-                "avg_spec_accept_length"
-            ]
-            print(f"{avg_spec_accept_length=}")
-            self.assertGreater(avg_spec_accept_length, self.gsm8k_accept_length_thres)
+            _check_accept_length(self, self.base_url, self.gsm8k_accept_length_thres)
 
 
 class MMLUMixin:
@@ -55,11 +64,16 @@ class MMLUMixin:
         mmlu_score_threshold: float
     """
 
-    mmlu_score_threshold: float
+    mmlu_score_threshold: float = _THRESHOLD_NOT_SET
+    mmlu_accept_length_thres: Optional[float] = None
     mmlu_num_examples: int = 5000
     mmlu_num_threads: int = 1024
 
     def test_mmlu(self):
+        assert (
+            self.mmlu_score_threshold == self.mmlu_score_threshold
+        ), f"{type(self).__name__} must set mmlu_score_threshold"
+
         args = SimpleNamespace(
             base_url=self.base_url,
             model=self.model,
@@ -75,6 +89,9 @@ class MMLUMixin:
 
         self.assertGreaterEqual(metrics["score"], self.mmlu_score_threshold)
 
+        if self.mmlu_accept_length_thres is not None:
+            _check_accept_length(self, self.base_url, self.mmlu_accept_length_thres)
+
 
 class HumanEvalMixin:
     """Mixin for HumanEval evaluation.
@@ -85,11 +102,15 @@ class HumanEvalMixin:
         humaneval_score_threshold: float
     """
 
-    humaneval_score_threshold: float
+    humaneval_score_threshold: float = _THRESHOLD_NOT_SET
     humaneval_score_threshold_amd: Optional[float] = None
     humaneval_num_threads: int = 1024
 
     def test_human_eval(self):
+        assert (
+            self.humaneval_score_threshold == self.humaneval_score_threshold
+        ), f"{type(self).__name__} must set humaneval_score_threshold"
+
         args = SimpleNamespace(
             base_url=self.base_url,
             model=self.model,
@@ -119,11 +140,15 @@ class MGSMEnMixin:
         mgsm_en_score_threshold: float
     """
 
-    mgsm_en_score_threshold: float
+    mgsm_en_score_threshold: float = _THRESHOLD_NOT_SET
     mgsm_en_num_examples: Optional[int] = None
     mgsm_en_num_threads: int = 1024
 
     def test_mgsm_en(self):
+        assert (
+            self.mgsm_en_score_threshold == self.mgsm_en_score_threshold
+        ), f"{type(self).__name__} must set mgsm_en_score_threshold"
+
         args = SimpleNamespace(
             base_url=self.base_url,
             model=self.model,

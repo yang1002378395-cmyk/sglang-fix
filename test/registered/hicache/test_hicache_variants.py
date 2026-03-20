@@ -8,14 +8,10 @@ Tests HiCache with different configurations: standard, MLA, EAGLE, and page size
 """
 
 import unittest
-from types import SimpleNamespace
-
-import requests
 
 from sglang.benchmark.utils import get_tokenizer
 from sglang.srt.utils import is_hip, kill_process_tree
 from sglang.test.kits.eval_accuracy_kit import MGSMEnMixin, MMLUMixin
-from sglang.test.run_eval import run_eval
 from sglang.test.test_utils import (
     DEFAULT_DRAFT_MODEL_EAGLE3,
     DEFAULT_MLA_MODEL_NAME_FOR_TEST,
@@ -35,9 +31,6 @@ class HiCacheBaseServer(CustomTestCase):
 
     model_name = DEFAULT_MODEL_NAME_FOR_TEST
     hicache_args = []
-    mmlu_score_threshold = 0.65
-    mmlu_num_examples = 64
-    mmlu_num_threads = 32
 
     @classmethod
     def setUpClass(cls):
@@ -120,27 +113,7 @@ class TestHiCacheEagle(HiCacheBaseServer, MMLUMixin):
     mmlu_score_threshold = 0.72
     mmlu_num_examples = 64
     mmlu_num_threads = 32
-
-    def test_mmlu(self):
-        """Override to add EAGLE-specific assertions"""
-        args = SimpleNamespace(
-            base_url=self.base_url,
-            model=self.model,
-            eval_name="mmlu",
-            num_examples=self.mmlu_num_examples,
-            num_threads=self.mmlu_num_threads,
-        )
-
-        metrics = run_eval(args)
-        self.assertGreaterEqual(metrics["score"], self.mmlu_score_threshold)
-
-        # EAGLE-specific check
-        server_info = requests.get(self.base_url + "/get_server_info").json()
-        avg_spec_accept_length = server_info["internal_states"][0][
-            "avg_spec_accept_length"
-        ]
-        print(f"{avg_spec_accept_length=}")
-        self.assertGreater(avg_spec_accept_length, 2.26)
+    mmlu_accept_length_thres = 2.26
 
 
 class TestHiCachePage(HiCacheBaseServer, MMLUMixin):
