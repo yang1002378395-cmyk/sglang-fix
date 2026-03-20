@@ -4,7 +4,7 @@ from typing import Callable, Optional, Tuple, Union
 
 import torch
 
-from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_debug
 
 try:
     from flash_attn.cute import flash_attn_varlen_func as _flash_attn_varlen_func
@@ -19,7 +19,7 @@ def _maybe_contiguous(x: Optional[torch.Tensor]) -> Optional[torch.Tensor]:
     return x.contiguous() if x is not None and x.stride(-1) != 1 else x
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
+@maybe_wrap_jit_kernel_debug(
     op_name="jit_kernel.flash_attention_v4.flash_attn_varlen_func"
 )
 def flash_attn_varlen_func(
@@ -94,7 +94,7 @@ def flash_attn_varlen_func(
     return result
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
+@maybe_wrap_jit_kernel_debug(
     op_name="jit_kernel.flash_attention_v4.flash_attn_with_kvcache"
 )
 def flash_attn_with_kvcache(

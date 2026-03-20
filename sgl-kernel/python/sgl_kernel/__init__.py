@@ -1,5 +1,5 @@
 import torch
-from sgl_kernel.debug_utils import maybe_wrap_sglang_debug
+from sgl_kernel.debug_utils import maybe_wrap_debug_kernel
 from sgl_kernel.load_utils import _load_architecture_specific_ops, _preload_cuda_library
 
 # Initialize the ops library based on current GPU
@@ -189,7 +189,7 @@ if torch.version.hip is not None:
 
 for _name in _DEBUG_EXPORT_NAMES:
     if _name in globals():
-        globals()[_name] = maybe_wrap_sglang_debug(
+        globals()[_name] = maybe_wrap_debug_kernel(
             globals()[_name], f"sgl_kernel.{_name}"
         )
 

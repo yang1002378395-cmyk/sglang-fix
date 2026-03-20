@@ -4,8 +4,8 @@ from typing import Optional, Tuple
 
 import torch
 
-from sglang.api_logging import sglang_debug_api
 from sglang.jit_kernel.diffusion.triton.rotary import apply_rotary_embedding
+from sglang.kernel_api_logging import debug_kernel_api
 from sglang.multimodal_gen.runtime.platforms import current_platform
 from sglang.srt.utils.custom_op import register_custom_op_from_extern
 
@@ -62,7 +62,7 @@ def _apply_rotary_emb(
         return apply_rotary_embedding(x, cos, sin, interleaved)
 
 
-@sglang_debug_api
+@debug_kernel_api
 def apply_flashinfer_rope_qk_inplace(
     q: torch.Tensor,
     k: torch.Tensor,

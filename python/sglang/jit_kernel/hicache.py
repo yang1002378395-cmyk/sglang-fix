@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_debug
 from sglang.jit_kernel.utils import cache_once, load_jit, make_cpp_args
 
 if TYPE_CHECKING:
@@ -67,9 +67,7 @@ def _default_unroll(element_size: int) -> int:
     return 1
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
-    op_name="jit_kernel.hicache.transfer_hicache_one_layer"
-)
+@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.hicache.transfer_hicache_one_layer")
 def transfer_hicache_one_layer(
     k_cache_dst: torch.Tensor,
     v_cache_dst: torch.Tensor,
@@ -105,9 +103,7 @@ def transfer_hicache_one_layer(
     )
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
-    op_name="jit_kernel.hicache.transfer_hicache_all_layer"
-)
+@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.hicache.transfer_hicache_all_layer")
 def transfer_hicache_all_layer(
     k_ptr_dst: torch.Tensor,
     v_ptr_dst: torch.Tensor,

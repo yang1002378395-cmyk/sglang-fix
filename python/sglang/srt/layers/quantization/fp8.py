@@ -10,7 +10,7 @@ import torch.nn.functional as F
 from torch.nn import Module
 from torch.nn.parameter import Parameter
 
-from sglang.api_logging import sglang_debug_torch_op
+from sglang.kernel_api_logging import debug_torch_op
 from sglang.srt.distributed import get_tensor_model_parallel_world_size, get_tp_group
 from sglang.srt.distributed.device_communicators.pynccl_allocator import (
     use_symmetric_memory,
@@ -111,7 +111,7 @@ ACTIVATION_SCHEMES = ["static", "dynamic"]
 
 logger = logging.getLogger(__name__)
 
-_apply_fp8_marlin_linear = sglang_debug_torch_op("apply_fp8_marlin_linear")
+_apply_fp8_marlin_linear = debug_torch_op("apply_fp8_marlin_linear")
 
 
 class Fp8Config(QuantizationConfig):

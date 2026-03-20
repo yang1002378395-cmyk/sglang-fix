@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Optional
 
 import torch
 
-from sglang.api_logging import sglang_debug_api
+from sglang.kernel_api_logging import debug_kernel_api
 from sglang.srt.utils.common import is_npu
 
 if TYPE_CHECKING:
@@ -77,7 +77,7 @@ class AttentionBackend(ABC):
         """
         raise NotImplementedError()
 
-    @sglang_debug_api
+    @debug_kernel_api
     def forward(
         self,
         q: torch.Tensor,

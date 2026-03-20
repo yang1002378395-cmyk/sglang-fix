@@ -2,7 +2,7 @@ import torch
 import triton  # type: ignore
 import triton.language as tl  # type: ignore
 
-from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_debug
 
 
 # Adapted from https://github.com/ModelTC/LightX2V/blob/main/lightx2v/common/ops/norm/triton_ops.py#L905-L956
@@ -35,9 +35,7 @@ def _rms_norm_tiled_onepass(
     tl.store(y_blk, x * rstd * w, mask=mask)
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
-    op_name="jit_kernel.diffusion.triton.rmsnorm_onepass"
-)
+@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.diffusion.triton.rmsnorm_onepass")
 def triton_one_pass_rms_norm(x: torch.Tensor, w: torch.Tensor, eps: float = 1e-6):
     shape = x.shape
     x = x.contiguous()
@@ -68,8 +66,6 @@ from sglang.multimodal_gen.runtime.platforms import current_platform
 if current_platform.is_mps():
     from .mps_fallback import triton_one_pass_rms_norm_native
 
-    @maybe_wrap_jit_kernel_sglang_debug(
-        op_name="jit_kernel.diffusion.triton.rmsnorm_onepass"
-    )
+    @maybe_wrap_jit_kernel_debug(op_name="jit_kernel.diffusion.triton.rmsnorm_onepass")
     def triton_one_pass_rms_norm(x: torch.Tensor, w: torch.Tensor, eps: float = 1e-6):
         return triton_one_pass_rms_norm_native(x, w, eps)

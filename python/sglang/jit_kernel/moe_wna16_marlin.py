@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Optional
 
 import torch
 
-from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_debug
 from sglang.jit_kernel.utils import cache_once, load_jit, make_cpp_args
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ def _or_empty(
     return t if t is not None else torch.empty(0, device=device, dtype=dtype)
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
+@maybe_wrap_jit_kernel_debug(
     op_name="jit_kernel.moe_wna16_marlin.moe_wna16_marlin_gemm"
 )
 def moe_wna16_marlin_gemm(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_debug
 from sglang.jit_kernel.utils import cache_once, load_jit
 
 if TYPE_CHECKING:
@@ -22,9 +22,7 @@ def _jit_ngram_embedding_module() -> Module:
     )
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
-    op_name="jit_kernel.ngram_embedding.compute_n_gram_ids"
-)
+@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.ngram_embedding.compute_n_gram_ids")
 def compute_n_gram_ids(
     ne_n: int,
     ne_k: int,
@@ -70,9 +68,7 @@ def compute_n_gram_ids(
     )
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
-    op_name="jit_kernel.ngram_embedding.update_token_table"
-)
+@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.ngram_embedding.update_token_table")
 def update_token_table(
     tokens: torch.Tensor,
     ne_token_table: torch.Tensor,

@@ -1,25 +1,25 @@
 ---
 name: debug-cuda-crash
-description: Tutorial for debugging CUDA crashes in SGLang using API logging
+description: Tutorial for debugging CUDA crashes in SGLang using kernel API logging
 ---
 
-# Tutorial: Debugging CUDA Crashes with API Logging
+# Tutorial: Debugging CUDA Crashes with Kernel API Logging
 
-This tutorial shows you how to debug CUDA crashes and errors in SGLang using the `@sglang_debug_api` logging decorator.
+This tutorial shows you how to debug CUDA crashes and errors in SGLang using the `@debug_kernel_api` logging decorator.
 
 ## Goal
 
-When your code crashes with CUDA errors such as illegal memory access, device-side assert, out-of-bounds, or NaN/Inf, use API logging to:
+When your code crashes with CUDA errors such as illegal memory access, device-side assert, out-of-bounds, or NaN/Inf, use kernel API logging to:
 - Capture input tensors BEFORE the crash occurs
 - Understand what data caused the problem
 - Track tensor shapes, dtypes, and values through the call boundary that triggered the crash
 - Detect numerical issues such as NaN, Inf, or obviously wrong shapes
 
-## Why Use API Logging?
+## Why Use Kernel API Logging?
 
 **Problem**: CUDA errors often crash the program before normal debugging output is flushed.
 
-**Solution**: SGLang's `@sglang_debug_api` decorator logs inputs before execution, so you can still see what caused the crash even after the program aborts.
+**Solution**: SGLang's `@debug_kernel_api` decorator logs inputs before execution, so you can still see what caused the crash even after the program aborts.
 
 ## What Is Covered?
 
@@ -32,13 +32,13 @@ The current logging coverage focuses on the highest-value kernel boundaries in S
 
 This means the logging is useful for both LLM and diffusion kernel debugging, but it does not automatically cover every pure PyTorch call in the repository.
 
-## Step 1: Enable API Logging
+## Step 1: Enable Kernel API Logging
 
 ### Basic Logging (Function Names Only)
 
 ```bash
-export SGLANG_API_LOGLEVEL=1
-export SGLANG_API_LOGDEST=stdout
+export SGLANG_KERNEL_API_LOGLEVEL=1
+export SGLANG_KERNEL_API_LOGDEST=stdout
 
 python my_script.py
 ```
@@ -46,11 +46,11 @@ python my_script.py
 Output:
 ```
 ================================================================================
-[2026-03-19 00:47:06] SGLang API Call: RMSNorm.forward
+[2026-03-19 00:47:06] SGLang Kernel API Call: RMSNorm.forward
 ================================================================================
-[2026-03-19 00:47:06] SGLang API Call: sglang.quant_method.UnquantizedLinearMethod.apply
+[2026-03-19 00:47:06] SGLang Kernel API Call: sglang.quant_method.UnquantizedLinearMethod.apply
 ================================================================================
-[2026-03-19 00:47:06] SGLang API Call: sglang.custom_op.fused_inplace_qknorm
+[2026-03-19 00:47:06] SGLang Kernel API Call: sglang.custom_op.fused_inplace_qknorm
 ```
 
 This is a real level-1 excerpt captured from `Qwen/Qwen3-0.6B`.
@@ -58,8 +58,8 @@ This is a real level-1 excerpt captured from `Qwen/Qwen3-0.6B`.
 ### Detailed Logging (Inputs with Metadata)
 
 ```bash
-export SGLANG_API_LOGLEVEL=3
-export SGLANG_API_LOGDEST=debug.log
+export SGLANG_KERNEL_API_LOGLEVEL=3
+export SGLANG_KERNEL_API_LOGDEST=debug.log
 
 python my_script.py
 ```
@@ -67,7 +67,7 @@ python my_script.py
 Output in `debug.log`:
 ```
 ================================================================================
-[2026-03-19 00:47:30] SGLang API Call: sglang.quant_method.UnquantizedLinearMethod.apply
+[2026-03-19 00:47:30] SGLang Kernel API Call: sglang.quant_method.UnquantizedLinearMethod.apply
 Positional input arguments:
   arg[0]=QKVParallelLinear(
       repr=QKVParallelLinear(in_features=1024, output_features=4096, bias=False, tp_size=1, gather_output=False)
@@ -95,8 +95,8 @@ This is a real level-3 excerpt captured from `Qwen/Qwen3-0.6B`.
 ### Full Logging (With Tensor Statistics)
 
 ```bash
-export SGLANG_API_LOGLEVEL=5
-export SGLANG_API_LOGDEST=debug.log
+export SGLANG_KERNEL_API_LOGLEVEL=5
+export SGLANG_KERNEL_API_LOGDEST=debug.log
 
 python my_script.py
 ```
@@ -104,7 +104,7 @@ python my_script.py
 Additional output:
 ```
 ================================================================================
-[2026-03-19 01:00:42] SGLang API Call: diffusion.quant_method.UnquantizedLinearMethod.apply
+[2026-03-19 01:00:42] SGLang Kernel API Call: diffusion.quant_method.UnquantizedLinearMethod.apply
 Positional input arguments:
   arg[1]=Tensor(
       shape=(1, 77, 768)
@@ -138,27 +138,27 @@ This is a real level-5 excerpt captured from `black-forest-labs/FLUX.1-dev`.
 ### Crash-Safe Dumps (Inputs Saved Before Execution)
 
 ```bash
-export SGLANG_API_LOGLEVEL=10
-export SGLANG_API_LOGDEST=debug.log
-export SGLANG_API_DUMP_DIR=/tmp/sglang_api_dumps
+export SGLANG_KERNEL_API_LOGLEVEL=10
+export SGLANG_KERNEL_API_LOGDEST=debug.log
+export SGLANG_KERNEL_API_DUMP_DIR=/tmp/sglang_kernel_api_dumps
 
 python my_script.py
 ```
 
 At level 10, SGLang saves the inputs before execution. If the kernel crashes, the dump directory still contains the inputs and exception metadata.
 
-If CUDA graph capture is active, tensor dumps are skipped automatically to avoid capture-time CUDA errors. In that case, you still get the API call log, but not `inputs.pt` / `outputs.pt`.
+If CUDA graph capture is active, tensor dumps are skipped automatically to avoid capture-time CUDA errors. In that case, you still get the kernel API call log, but not `inputs.pt` / `outputs.pt`.
 
 Level-10 dumps are best understood as crash-safe call snapshots. They always preserve the observed call boundary. They do not guarantee one-click replay for every method, because some methods depend on module state that is not serialized into the dump.
 
 Real level-10 dump layout from `Qwen/Qwen3-0.6B`:
 
 ```text
-/tmp/sglang_api_validation/qwen_qwen3_0_6b_level10_dumps
-/tmp/sglang_api_validation/qwen_qwen3_0_6b_level10_dumps/20260319_004821_182_pid919286_RotaryEmbedding.forward_call0001
-/tmp/sglang_api_validation/qwen_qwen3_0_6b_level10_dumps/20260319_004821_182_pid919286_RotaryEmbedding.forward_call0001/inputs.pt
-/tmp/sglang_api_validation/qwen_qwen3_0_6b_level10_dumps/20260319_004821_182_pid919286_RotaryEmbedding.forward_call0001/metadata.json
-/tmp/sglang_api_validation/qwen_qwen3_0_6b_level10_dumps/20260319_004821_182_pid919286_RotaryEmbedding.forward_call0001/outputs.pt
+/tmp/sglang_kernel_api_validation/qwen_qwen3_0_6b_level10_dumps
+/tmp/sglang_kernel_api_validation/qwen_qwen3_0_6b_level10_dumps/20260319_004821_182_pid919286_RotaryEmbedding.forward_call0001
+/tmp/sglang_kernel_api_validation/qwen_qwen3_0_6b_level10_dumps/20260319_004821_182_pid919286_RotaryEmbedding.forward_call0001/inputs.pt
+/tmp/sglang_kernel_api_validation/qwen_qwen3_0_6b_level10_dumps/20260319_004821_182_pid919286_RotaryEmbedding.forward_call0001/metadata.json
+/tmp/sglang_kernel_api_validation/qwen_qwen3_0_6b_level10_dumps/20260319_004821_182_pid919286_RotaryEmbedding.forward_call0001/outputs.pt
 ```
 
 Real `metadata.json` excerpt:
@@ -198,8 +198,8 @@ Path("/tmp/sglang_llm_crash.py").write_text(
 )
 PY
 
-SGLANG_API_LOGLEVEL=1 \
-SGLANG_API_LOGDEST=/tmp/sglang_llm_level1.log \
+SGLANG_KERNEL_API_LOGLEVEL=1 \
+SGLANG_KERNEL_API_LOGDEST=/tmp/sglang_llm_level1.log \
 python3 /tmp/sglang_llm_crash.py
 ```
 
@@ -210,8 +210,8 @@ What to expect:
 Try the same example at level 3:
 
 ```bash
-SGLANG_API_LOGLEVEL=3 \
-SGLANG_API_LOGDEST=/tmp/sglang_llm_level3.log \
+SGLANG_KERNEL_API_LOGLEVEL=3 \
+SGLANG_KERNEL_API_LOGDEST=/tmp/sglang_llm_level3.log \
 python3 /tmp/sglang_llm_crash.py
 ```
 
@@ -220,9 +220,9 @@ Now the log shows tensor metadata before the crash.
 Try level 10:
 
 ```bash
-SGLANG_API_LOGLEVEL=10 \
-SGLANG_API_LOGDEST=/tmp/sglang_llm_level10.log \
-SGLANG_API_DUMP_DIR=/tmp/sglang_llm_level10_dumps \
+SGLANG_KERNEL_API_LOGLEVEL=10 \
+SGLANG_KERNEL_API_LOGDEST=/tmp/sglang_llm_level10.log \
+SGLANG_KERNEL_API_DUMP_DIR=/tmp/sglang_llm_level10_dumps \
 python3 /tmp/sglang_llm_crash.py
 ```
 
@@ -258,25 +258,25 @@ Path("/tmp/sglang_diffusion_crash.py").write_text(
 )
 PY
 
-SGLANG_API_LOGLEVEL=1 \
-SGLANG_API_LOGDEST=/tmp/sglang_diffusion_level1.log \
+SGLANG_KERNEL_API_LOGLEVEL=1 \
+SGLANG_KERNEL_API_LOGDEST=/tmp/sglang_diffusion_level1.log \
 python3 /tmp/sglang_diffusion_crash.py
 ```
 
 Try level 3:
 
 ```bash
-SGLANG_API_LOGLEVEL=3 \
-SGLANG_API_LOGDEST=/tmp/sglang_diffusion_level3.log \
+SGLANG_KERNEL_API_LOGLEVEL=3 \
+SGLANG_KERNEL_API_LOGDEST=/tmp/sglang_diffusion_level3.log \
 python3 /tmp/sglang_diffusion_crash.py
 ```
 
 Try level 10:
 
 ```bash
-SGLANG_API_LOGLEVEL=10 \
-SGLANG_API_LOGDEST=/tmp/sglang_diffusion_level10.log \
-SGLANG_API_DUMP_DIR=/tmp/sglang_diffusion_level10_dumps \
+SGLANG_KERNEL_API_LOGLEVEL=10 \
+SGLANG_KERNEL_API_LOGDEST=/tmp/sglang_diffusion_level10.log \
+SGLANG_KERNEL_API_DUMP_DIR=/tmp/sglang_diffusion_level10_dumps \
 python3 /tmp/sglang_diffusion_crash.py
 ```
 
@@ -287,8 +287,8 @@ If your local environment has unrelated FlashInfer import issues, resolve them i
 When running with multiple GPUs or worker processes, use `%i` in the log path:
 
 ```bash
-export SGLANG_API_LOGLEVEL=3
-export SGLANG_API_LOGDEST=debug_rank_%i.log
+export SGLANG_KERNEL_API_LOGLEVEL=3
+export SGLANG_KERNEL_API_LOGDEST=debug_rank_%i.log
 
 torchrun --nproc_per_node=4 my_script.py
 ```
@@ -302,18 +302,18 @@ This creates separate logs such as:
 Real multi-process example from a 2-GPU `Qwen/Qwen2.5-0.5B-Instruct` run:
 
 ```text
-/tmp/sglang_api_validation_multi/qwen_qwen2_5_0_5b_instruct_level3_950201.log
-/tmp/sglang_api_validation_multi/qwen_qwen2_5_0_5b_instruct_level3_950349.log
-/tmp/sglang_api_validation_multi/qwen_qwen2_5_0_5b_instruct_level3_950350.log
-/tmp/sglang_api_validation_multi/qwen_qwen2_5_0_5b_instruct_level3_950351.log
+/tmp/sglang_kernel_api_validation_multi/qwen_qwen2_5_0_5b_instruct_level3_950201.log
+/tmp/sglang_kernel_api_validation_multi/qwen_qwen2_5_0_5b_instruct_level3_950349.log
+/tmp/sglang_kernel_api_validation_multi/qwen_qwen2_5_0_5b_instruct_level3_950350.log
+/tmp/sglang_kernel_api_validation_multi/qwen_qwen2_5_0_5b_instruct_level3_950351.log
 ```
 
 You should usually do the same for level-10 dump directories:
 
 ```bash
-export SGLANG_API_LOGLEVEL=10
-export SGLANG_API_LOGDEST=debug_rank_%i.log
-export SGLANG_API_DUMP_DIR=/tmp/sglang_api_dumps_%i
+export SGLANG_KERNEL_API_LOGLEVEL=10
+export SGLANG_KERNEL_API_LOGDEST=debug_rank_%i.log
+export SGLANG_KERNEL_API_DUMP_DIR=/tmp/sglang_kernel_api_dumps_%i
 ```
 
 This avoids multiple ranks writing into the same dump directory tree.
@@ -323,14 +323,14 @@ This avoids multiple ranks writing into the same dump directory tree.
 If level 10 is too noisy, restrict dumps to specific APIs:
 
 ```bash
-export SGLANG_API_LOGLEVEL=10
-export SGLANG_API_LOGDEST=debug.log
-export SGLANG_API_DUMP_DIR=/tmp/sglang_api_dumps
-export SGLANG_API_DUMP_INCLUDE='sglang.custom_op.*'
-export SGLANG_API_DUMP_EXCLUDE='*.fake_impl'
+export SGLANG_KERNEL_API_LOGLEVEL=10
+export SGLANG_KERNEL_API_LOGDEST=debug.log
+export SGLANG_KERNEL_API_DUMP_DIR=/tmp/sglang_kernel_api_dumps
+export SGLANG_KERNEL_API_DUMP_INCLUDE='sglang.custom_op.*'
+export SGLANG_KERNEL_API_DUMP_EXCLUDE='*.fake_impl'
 ```
 
-`SGLANG_API_DUMP_INCLUDE` and `SGLANG_API_DUMP_EXCLUDE` use shell-style wildcard matching.
+`SGLANG_KERNEL_API_DUMP_INCLUDE` and `SGLANG_KERNEL_API_DUMP_EXCLUDE` use shell-style wildcard matching.
 
 ## Step 6: Common CUDA Errors and What to Check
 
@@ -345,7 +345,7 @@ torch.AcceleratorError: CUDA error: device-side assert triggered
 Use:
 
 ```bash
-export SGLANG_API_LOGLEVEL=3
+export SGLANG_KERNEL_API_LOGLEVEL=3
 ```
 
 Check in the logs:
@@ -358,7 +358,7 @@ Check in the logs:
 Typical shape-mismatch pattern:
 
 ```text
-SGLang API Call: ...
+SGLang Kernel API Call: ...
 arg[0]=Tensor(shape=(..., 128), ...)   # ✅ expected dimension
 arg[1]=Tensor(shape=(..., 64), ...)    # ❌ mismatch
 ```
@@ -370,7 +370,7 @@ This often points to head-dim, hidden-dim, or cache-layout mismatch rather than 
 Use:
 
 ```bash
-export SGLANG_API_LOGLEVEL=5
+export SGLANG_KERNEL_API_LOGLEVEL=5
 ```
 
 Check:
@@ -400,7 +400,7 @@ This usually means the bad values were already present before the crashing kerne
 Use:
 
 ```bash
-export SGLANG_API_LOGLEVEL=3
+export SGLANG_KERNEL_API_LOGLEVEL=3
 ```
 
 Check:
@@ -425,7 +425,7 @@ Tensor(
 Suppose the failing API log looks like this:
 
 ```text
-[2026-03-19 00:47:30] SGLang API Call: RotaryEmbedding.forward
+[2026-03-19 00:47:30] SGLang Kernel API Call: RotaryEmbedding.forward
 Positional input arguments:
   arg[0]=Tensor(shape=(1, 8), dtype=torch.int64, ...)
   arg[1]=Tensor(shape=(1, 8, 8, 256), dtype=torch.bfloat16, ...)    # ✅ query
@@ -441,11 +441,11 @@ That usually means the bug is in projection layout, head packing, or cache forma
 
 ## Step 7: Combine with compute-sanitizer
 
-For harder bugs, combine API logging with CUDA memory checking:
+For harder bugs, combine kernel API logging with CUDA memory checking:
 
 ```bash
-export SGLANG_API_LOGLEVEL=3
-export SGLANG_API_LOGDEST=debug.log
+export SGLANG_KERNEL_API_LOGLEVEL=3
+export SGLANG_KERNEL_API_LOGDEST=debug.log
 
 compute-sanitizer --tool memcheck python3 /tmp/sglang_llm_crash.py
 ```
@@ -471,8 +471,8 @@ If you need more synchronous host-side error reporting, you can try `CUDA_LAUNCH
 For crashes that need a stack trace instead of only memory diagnostics:
 
 ```bash
-export SGLANG_API_LOGLEVEL=3
-export SGLANG_API_LOGDEST=debug.log
+export SGLANG_KERNEL_API_LOGLEVEL=3
+export SGLANG_KERNEL_API_LOGDEST=debug.log
 
 cuda-gdb --args python3 /tmp/sglang_llm_crash.py
 ```
@@ -562,25 +562,25 @@ static_assert(BLOCK_SIZE % 32 == 0, "BLOCK_SIZE must be warp aligned");
 
 | Variable | Values | Description |
 |----------|--------|-------------|
-| `SGLANG_API_LOGLEVEL` | `0` | No logging (default) |
+| `SGLANG_KERNEL_API_LOGLEVEL` | `0` | No logging (default) |
 |  | `1` | Function names only |
 |  | `3` | Inputs and outputs with metadata |
 |  | `5` | Level 3 plus tensor statistics |
 |  | `10` | Level 5 plus crash-safe tensor dumps |
-| `SGLANG_API_LOGDEST` | `stdout` | Log to stdout |
+| `SGLANG_KERNEL_API_LOGDEST` | `stdout` | Log to stdout |
 |  | `stderr` | Log to stderr |
 |  | `<path>` | Log to file |
 |  | `log_%i.txt` | `%i` expands to process ID |
-| `SGLANG_API_DUMP_DIR` | `<path>` | Directory for level-10 dumps |
-| `SGLANG_API_DUMP_INCLUDE` | wildcard list | Only dump matching API names |
-| `SGLANG_API_DUMP_EXCLUDE` | wildcard list | Skip matching API names |
+| `SGLANG_KERNEL_API_DUMP_DIR` | `<path>` | Directory for level-10 dumps |
+| `SGLANG_KERNEL_API_DUMP_INCLUDE` | wildcard list | Only dump matching API names |
+| `SGLANG_KERNEL_API_DUMP_EXCLUDE` | wildcard list | Skip matching API names |
 
 ## Best Practices
 
 ### 1. Start with Level 3
 
 ```bash
-export SGLANG_API_LOGLEVEL=3
+export SGLANG_KERNEL_API_LOGLEVEL=3
 ```
 
 Level 3 is usually enough to catch wrong shapes, wrong dtypes, and wrong devices.
@@ -588,7 +588,7 @@ Level 3 is usually enough to catch wrong shapes, wrong dtypes, and wrong devices
 ### 2. Use Level 5 for Numerical Issues
 
 ```bash
-export SGLANG_API_LOGLEVEL=5
+export SGLANG_KERNEL_API_LOGLEVEL=5
 ```
 
 Use it when you suspect NaN or Inf values.
@@ -596,19 +596,19 @@ Use it when you suspect NaN or Inf values.
 ### 3. Use Level 10 for Crash Reproduction
 
 ```bash
-export SGLANG_API_LOGLEVEL=10
+export SGLANG_KERNEL_API_LOGLEVEL=10
 ```
 
 This is the most useful mode when the process crashes before you can inspect live tensors.
 
 If you need successful input/output dumps from a real model run, temporarily disable CUDA graph for that debug session.
 
-When level 10 is too noisy, pair it with `SGLANG_API_DUMP_INCLUDE` / `SGLANG_API_DUMP_EXCLUDE` instead of dumping every covered API.
+When level 10 is too noisy, pair it with `SGLANG_KERNEL_API_DUMP_INCLUDE` / `SGLANG_KERNEL_API_DUMP_EXCLUDE` instead of dumping every covered API.
 
 ### 4. Log to File for Crashes
 
 ```bash
-export SGLANG_API_LOGDEST=crash.log
+export SGLANG_KERNEL_API_LOGDEST=crash.log
 ```
 
 File logs are safer than stdout when the process aborts.
@@ -616,7 +616,7 @@ File logs are safer than stdout when the process aborts.
 ### 5. Disable Logging in Production
 
 ```bash
-unset SGLANG_API_LOGLEVEL
+unset SGLANG_KERNEL_API_LOGLEVEL
 ```
 
 When disabled, the decorator returns the original callable and adds no runtime logging overhead.
@@ -626,8 +626,8 @@ When disabled, the decorator returns the original callable and adds no runtime l
 ### No Logs Appear
 
 Check:
-1. `echo $SGLANG_API_LOGLEVEL`
-2. `echo $SGLANG_API_LOGDEST`
+1. `echo $SGLANG_KERNEL_API_LOGLEVEL`
+2. `echo $SGLANG_KERNEL_API_LOGDEST`
 3. Whether the failing path goes through a covered API boundary
 
 ### Too Much Output
@@ -635,7 +635,7 @@ Check:
 Reduce the level:
 
 ```bash
-export SGLANG_API_LOGLEVEL=3
+export SGLANG_KERNEL_API_LOGLEVEL=3
 ```
 
 ### Statistics Are Skipped During CUDA Graph Capture

@@ -8,7 +8,7 @@ from typing import Any
 
 import torch.nn as nn
 
-from sglang.api_logging import sglang_debug_api
+from sglang.kernel_api_logging import debug_kernel_api
 from sglang.multimodal_gen.runtime.platforms import current_platform
 from sglang.multimodal_gen.runtime.utils.logging_utils import init_logger
 
@@ -26,7 +26,7 @@ class CustomOp(nn.Module):
         super().__init__()
         self._forward_method = self.dispatch_forward()
 
-    @sglang_debug_api
+    @debug_kernel_api
     def forward(self, *args, **kwargs) -> Any:
         return self._forward_method(*args, **kwargs)
 

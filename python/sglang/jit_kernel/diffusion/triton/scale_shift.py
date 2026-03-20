@@ -2,7 +2,7 @@ import torch
 import triton  # type: ignore
 import triton.language as tl  # type: ignore
 
-from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_sglang_debug
+from sglang.jit_kernel.debug_utils import maybe_wrap_jit_kernel_debug
 from sglang.multimodal_gen.runtime.platforms import current_platform
 
 
@@ -445,7 +445,7 @@ def fuse_scale_shift_gate_select01_kernel_blc_opt(
     tl.store(gate_out_ptr + go_off, gate, mask=mask)
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
+@maybe_wrap_jit_kernel_debug(
     op_name="jit_kernel.diffusion.triton.fuse_scale_shift_kernel"
 )
 def fuse_scale_shift_kernel(
@@ -567,7 +567,7 @@ def fuse_scale_shift_kernel(
     return output
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
+@maybe_wrap_jit_kernel_debug(
     op_name="jit_kernel.diffusion.triton.fuse_scale_shift_gate_select01_kernel"
 )
 def fuse_scale_shift_gate_select01_kernel(
@@ -642,7 +642,7 @@ def fuse_scale_shift_gate_select01_kernel(
     return output, gate_out
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
+@maybe_wrap_jit_kernel_debug(
     op_name="jit_kernel.diffusion.triton.fuse_layernorm_scale_shift_gate_select01_kernel"
 )
 def fuse_layernorm_scale_shift_gate_select01_kernel(
@@ -734,7 +734,7 @@ def fuse_layernorm_scale_shift_gate_select01_kernel(
     return output, gate_out
 
 
-@maybe_wrap_jit_kernel_sglang_debug(
+@maybe_wrap_jit_kernel_debug(
     op_name="jit_kernel.diffusion.triton.fuse_residual_layernorm_scale_shift_gate_select01_kernel"
 )
 def fuse_residual_layernorm_scale_shift_gate_select01_kernel(
@@ -847,7 +847,7 @@ def fuse_residual_layernorm_scale_shift_gate_select01_kernel(
 if current_platform.is_npu():
     from .npu_fallback import fuse_scale_shift_native
 
-    @maybe_wrap_jit_kernel_sglang_debug(
+    @maybe_wrap_jit_kernel_debug(
         op_name="jit_kernel.diffusion.triton.fuse_scale_shift_kernel"
     )
     def fuse_scale_shift_kernel(
@@ -869,7 +869,7 @@ if current_platform.is_mps():
         fuse_scale_shift_kernel_native,
     )
 
-    @maybe_wrap_jit_kernel_sglang_debug(
+    @maybe_wrap_jit_kernel_debug(
         op_name="jit_kernel.diffusion.triton.fuse_scale_shift_kernel"
     )
     def fuse_scale_shift_kernel(
@@ -884,7 +884,7 @@ if current_platform.is_mps():
             x, scale, shift, scale_constant, block_l, block_c
         )
 
-    @maybe_wrap_jit_kernel_sglang_debug(
+    @maybe_wrap_jit_kernel_debug(
         op_name="jit_kernel.diffusion.triton.fuse_scale_shift_gate_select01_kernel"
     )
     def fuse_scale_shift_gate_select01_kernel(

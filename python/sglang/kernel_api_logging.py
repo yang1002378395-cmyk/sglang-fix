@@ -1,6 +1,6 @@
-"""API-level crash debugging helpers for SGLang.
+"""Kernel API crash debugging helpers for SGLang.
 
-This module was developed with reference to FlashInfer's API logging utility:
+This module was developed with reference to FlashInfer's kernel API logging utility:
 https://github.com/flashinfer-ai/flashinfer/blob/main/flashinfer/api_logging.py
 """
 
@@ -26,23 +26,27 @@ def _substitute_process_id(path: str) -> str:
     return path
 
 
-_API_LOG_LEVEL = int(os.environ.get("SGLANG_API_LOGLEVEL", "0"))
-_API_LOG_DEST = _substitute_process_id(os.environ.get("SGLANG_API_LOGDEST", "stdout"))
+_KERNEL_API_LOG_LEVEL = int(os.environ.get("SGLANG_KERNEL_API_LOGLEVEL", "0"))
+_KERNEL_API_LOG_DEST = _substitute_process_id(
+    os.environ.get("SGLANG_KERNEL_API_LOGDEST", "stdout")
+)
 _DUMP_DIR = Path(
-    _substitute_process_id(os.environ.get("SGLANG_API_DUMP_DIR", "sglang_api_dumps"))
+    _substitute_process_id(
+        os.environ.get("SGLANG_KERNEL_API_DUMP_DIR", "sglang_kernel_api_dumps")
+    )
 )
 _DUMP_INCLUDE_PATTERNS = [
     p.strip()
-    for p in os.environ.get("SGLANG_API_DUMP_INCLUDE", "").split(",")
+    for p in os.environ.get("SGLANG_KERNEL_API_DUMP_INCLUDE", "").split(",")
     if p.strip()
 ]
 _DUMP_EXCLUDE_PATTERNS = [
     p.strip()
-    for p in os.environ.get("SGLANG_API_DUMP_EXCLUDE", "").split(",")
+    for p in os.environ.get("SGLANG_KERNEL_API_DUMP_EXCLUDE", "").split(",")
     if p.strip()
 ]
 
-_logger = logging.getLogger("sglang.api")
+_logger = logging.getLogger("sglang.kernel_api")
 _dump_call_counter: dict[str, int] = {}
 
 
@@ -54,19 +58,19 @@ def _setup_logger() -> None:
         except Exception:
             pass
 
-    if _API_LOG_LEVEL == 0:
+    if _KERNEL_API_LOG_LEVEL == 0:
         _logger.addHandler(logging.NullHandler())
         _logger.setLevel(logging.CRITICAL + 1)
         return
 
     _logger.setLevel(logging.DEBUG)
 
-    if _API_LOG_DEST == "stdout":
+    if _KERNEL_API_LOG_DEST == "stdout":
         handler = logging.StreamHandler(sys.stdout)
-    elif _API_LOG_DEST == "stderr":
+    elif _KERNEL_API_LOG_DEST == "stderr":
         handler = logging.StreamHandler(sys.stderr)
     else:
-        handler = logging.FileHandler(_API_LOG_DEST, mode="a")
+        handler = logging.FileHandler(_KERNEL_API_LOG_DEST, mode="a")
 
     handler.setFormatter(logging.Formatter("%(message)s"))
     _logger.addHandler(handler)
@@ -122,7 +126,7 @@ def _serialize_tensor(tensor: torch.Tensor) -> list[str]:
     _append_line(lines, 2, f"requires_grad={tensor.requires_grad}")
     _append_line(lines, 2, f"is_contiguous={tensor.is_contiguous()}")
 
-    if _API_LOG_LEVEL >= 5:
+    if _KERNEL_API_LOG_LEVEL >= 5:
         if tensor.numel() == 0:
             _append_line(lines, 2, "statistics=[empty tensor]")
         elif tensor.device.type == "cuda" and _is_cuda_graph_capture_active():
@@ -358,12 +362,12 @@ def _infer_func_name(func: Callable, args: tuple[Any, ...]) -> str:
     return func.__name__
 
 
-def sglang_debug_api(
+def debug_kernel_api(
     func: Callable | None = None,
     *,
     op_name: str | None = None,
 ) -> Callable:
-    if _API_LOG_LEVEL == 0:
+    if _KERNEL_API_LOG_LEVEL == 0:
         if func is None:
             return lambda f: f
         return func
@@ -384,9 +388,9 @@ def sglang_debug_api(
             if args and parameters and parameters[0].name in {"self", "cls"}:
                 positional_args = args[1:]
             _logger.debug("=" * 80)
-            _logger.debug("%s SGLang API Call: %s", _timestamp(), func_name)
+            _logger.debug("%s SGLang Kernel API Call: %s", _timestamp(), func_name)
 
-            if _API_LOG_LEVEL >= 3:
+            if _KERNEL_API_LOG_LEVEL >= 3:
                 if positional_args:
                     _log_section(
                         "Positional input arguments:",
@@ -395,7 +399,7 @@ def sglang_debug_api(
                 if kwargs:
                     _log_section("Keyword input arguments:", kwargs)
 
-            if _API_LOG_LEVEL >= 10:
+            if _KERNEL_API_LOG_LEVEL >= 10:
                 if _is_cuda_graph_capture_active():
                     _logger.debug("Tensor dump skipped: CUDA graph capture in progress")
                 else:
@@ -407,7 +411,7 @@ def sglang_debug_api(
                 if dump_dir is not None:
                     _mark_dump_exception(dump_dir, exc)
                 _logger.debug(
-                    "%s SGLang API Exception: %s (%s: %s)",
+                    "%s SGLang Kernel API Exception: %s (%s: %s)",
                     _timestamp(),
                     func_name,
                     type(exc).__name__,
@@ -417,7 +421,7 @@ def sglang_debug_api(
 
             if dump_dir is not None:
                 _dump_function_outputs(dump_dir, result)
-            if _API_LOG_LEVEL >= 3:
+            if _KERNEL_API_LOG_LEVEL >= 3:
                 _log_section("Output:", {"return": result})
             return result
 
@@ -428,14 +432,14 @@ def sglang_debug_api(
     return decorator(func)
 
 
-def sglang_debug_torch_op(op_name: str, *, namespace: str = "sglang") -> Callable:
+def debug_torch_op(op_name: str, *, namespace: str = "sglang") -> Callable:
     def call(*args: Any, **kwargs: Any) -> Any:
         return getattr(getattr(torch.ops, namespace), op_name)(*args, **kwargs)
 
-    return sglang_debug_api(call, op_name=f"{namespace}.custom_op.{op_name}")
+    return debug_kernel_api(call, op_name=f"{namespace}.custom_op.{op_name}")
 
 
-def wrap_method_with_sglang_debug_once(
+def wrap_method_with_debug_kernel_once(
     obj: Any,
     method_name: str,
     *,
@@ -443,7 +447,7 @@ def wrap_method_with_sglang_debug_once(
     marker_attr: str | None = None,
 ) -> Any:
     if marker_attr is None:
-        marker_attr = f"_sglang_debug_{method_name}_wrapped"
+        marker_attr = f"_debug_kernel_{method_name}_wrapped"
 
     if getattr(obj, marker_attr, False):
         return obj
@@ -451,7 +455,7 @@ def wrap_method_with_sglang_debug_once(
     setattr(
         obj,
         method_name,
-        sglang_debug_api(getattr(obj, method_name), op_name=op_name),
+        debug_kernel_api(getattr(obj, method_name), op_name=op_name),
     )
     setattr(obj, marker_attr, True)
     return obj

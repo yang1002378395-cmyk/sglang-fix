@@ -25,7 +25,7 @@ import triton.language as tl
 from torch import nn
 from transformers import PretrainedConfig
 
-from sglang.api_logging import sglang_debug_api
+from sglang.kernel_api_logging import debug_kernel_api
 from sglang.srt.batch_overlap.two_batch_overlap import model_forward_maybe_tbo
 from sglang.srt.distributed import (
     get_moe_expert_parallel_world_size,
@@ -159,7 +159,7 @@ def rmsnorm_apply_kernel_serial(
     tl.store(out2_row + offsets2, out2, mask=mask2)
 
 
-@sglang_debug_api(op_name="MiniMaxM2.rms_sumsq_serial")
+@debug_kernel_api(op_name="MiniMaxM2.rms_sumsq_serial")
 def rms_sumsq_serial(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     assert x1.is_cuda and x2.is_cuda
     B, D1 = x1.shape
@@ -198,7 +198,7 @@ def rms_sumsq_serial(x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
     return sum_sq
 
 
-@sglang_debug_api(op_name="MiniMaxM2.rms_apply_serial")
+@debug_kernel_api(op_name="MiniMaxM2.rms_apply_serial")
 def rms_apply_serial(
     x1: torch.Tensor,
     x2: torch.Tensor,

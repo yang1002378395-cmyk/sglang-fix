@@ -43,12 +43,12 @@ These variables configure S3-compatible cloud storage for automatically uploadin
 
 ## CUDA Crash Debugging
 
-These variables enable API-level logging and optional input/output dumps around diffusion CUDA kernel call boundaries. They are useful when tracking down CUDA crashes such as illegal memory access, device-side assert, or shape mismatches in custom kernels.
+These variables enable kernel API logging and optional input/output dumps around diffusion CUDA kernel call boundaries. They are useful when tracking down CUDA crashes such as illegal memory access, device-side assert, or shape mismatches in custom kernels.
 
 | Environment Variable | Default | Description |
 |----------------------|---------|-------------|
-| `SGLANG_API_LOGLEVEL` | `0` | Controls crash-debug API logging. `1` logs API names, `3` logs tensor metadata, `5` adds tensor statistics, and `10` also writes dump snapshots. |
-| `SGLANG_API_LOGDEST` | `stdout` | Destination for crash-debug API logs. Use `stdout`, `stderr`, or a file path. `%i` is replaced with the process PID. |
-| `SGLANG_API_DUMP_DIR` | `sglang_api_dumps` | Output directory for level-10 API dumps. `%i` is replaced with the process PID. |
-| `SGLANG_API_DUMP_INCLUDE` | not set | Comma-separated wildcard patterns for API names to include in level-10 dumps. |
-| `SGLANG_API_DUMP_EXCLUDE` | not set | Comma-separated wildcard patterns for API names to exclude from level-10 dumps. |
+| `SGLANG_KERNEL_API_LOGLEVEL` | `0` | Controls crash-debug kernel API logging. `1` logs API names, `3` logs tensor metadata, `5` adds tensor statistics, and `10` also writes dump snapshots. |
+| `SGLANG_KERNEL_API_LOGDEST` | `stdout` | Destination for crash-debug kernel API logs. Use `stdout`, `stderr`, or a file path. `%i` is replaced with the process PID. |
+| `SGLANG_KERNEL_API_DUMP_DIR` | `sglang_kernel_api_dumps` | Output directory for level-10 kernel API dumps. `%i` is replaced with the process PID. |
+| `SGLANG_KERNEL_API_DUMP_INCLUDE` | not set | Comma-separated wildcard patterns for kernel API names to include in level-10 dumps. |
+| `SGLANG_KERNEL_API_DUMP_EXCLUDE` | not set | Comma-separated wildcard patterns for kernel API names to exclude from level-10 dumps. |

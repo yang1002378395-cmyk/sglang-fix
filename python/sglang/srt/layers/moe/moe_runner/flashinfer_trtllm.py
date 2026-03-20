@@ -9,7 +9,7 @@ from torch.nn.parameter import Parameter
 
 # Import to register custom ops for torch.compile compatibility
 import sglang.srt.layers.moe.flashinfer_trtllm_moe  # noqa: F401
-from sglang.api_logging import sglang_debug_torch_op
+from sglang.kernel_api_logging import debug_torch_op
 from sglang.srt.distributed import get_tp_group
 from sglang.srt.distributed.device_communicators.pynccl_allocator import (
     use_symmetric_memory,
@@ -45,13 +45,13 @@ elif is_cuda_alike():
 else:
     fp4_quantize = None
 
-_trtllm_fp8_block_scale_routed_moe_wrapper = sglang_debug_torch_op(
+_trtllm_fp8_block_scale_routed_moe_wrapper = debug_torch_op(
     "trtllm_fp8_block_scale_routed_moe_wrapper"
 )
-_trtllm_fp8_block_scale_moe_wrapper = sglang_debug_torch_op(
+_trtllm_fp8_block_scale_moe_wrapper = debug_torch_op(
     "trtllm_fp8_block_scale_moe_wrapper"
 )
-_trtllm_fp8_per_tensor_scale_moe = sglang_debug_torch_op(
+_trtllm_fp8_per_tensor_scale_moe = debug_torch_op(
     "trtllm_fp8_per_tensor_scale_moe_wrapper"
 )
 
