@@ -219,7 +219,7 @@ def _jit_nvfp4_blockwise_moe_module() -> Module:
         )
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.nvfp4.cutlass_scaled_fp4_mm")
+@maybe_wrap_jit_kernel_debug
 def cutlass_scaled_fp4_mm(
     a: torch.Tensor,
     b: torch.Tensor,
@@ -236,7 +236,7 @@ def cutlass_scaled_fp4_mm(
     return out
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.nvfp4.cutlass_fp4_group_mm")
+@maybe_wrap_jit_kernel_debug
 def cutlass_fp4_group_mm(
     a_fp4: torch.Tensor,
     b_fp4: torch.Tensor,
@@ -316,7 +316,7 @@ def _scaled_fp4_quant_custom_op(
     module.scaled_fp4_quant(output, input, output_scale, input_global_scale)
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.nvfp4.scaled_fp4_quant")
+@maybe_wrap_jit_kernel_debug
 def scaled_fp4_quant(
     input: torch.Tensor, input_global_scale: torch.Tensor
 ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -386,7 +386,7 @@ def _scaled_fp4_experts_quant_custom_op(
     )
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.nvfp4.scaled_fp4_experts_quant")
+@maybe_wrap_jit_kernel_debug
 def scaled_fp4_experts_quant(
     input_tensor: torch.Tensor,
     input_global_scale: torch.Tensor,
@@ -471,7 +471,7 @@ def _scaled_fp4_grouped_quant_custom_op(
     )
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.nvfp4.scaled_fp4_grouped_quant")
+@maybe_wrap_jit_kernel_debug
 def scaled_fp4_grouped_quant(
     input_tensor: torch.Tensor,
     input_global_scale: torch.Tensor,
@@ -532,9 +532,7 @@ def _silu_and_mul_scaled_fp4_grouped_quant_custom_op(
     )
 
 
-@maybe_wrap_jit_kernel_debug(
-    op_name="jit_kernel.nvfp4.silu_and_mul_scaled_fp4_grouped_quant"
-)
+@maybe_wrap_jit_kernel_debug
 def silu_and_mul_scaled_fp4_grouped_quant(
     input_tensor: torch.Tensor,
     input_global_scale: torch.Tensor,

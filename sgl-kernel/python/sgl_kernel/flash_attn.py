@@ -32,7 +32,7 @@ def maybe_contiguous(x):
     return x.contiguous() if x is not None and x.stride(-1) != 1 else x
 
 
-@maybe_wrap_debug_kernel(op_name="sgl_kernel.flash_attn.flash_attn_with_kvcache")
+@maybe_wrap_debug_kernel
 def flash_attn_with_kvcache(
     q,
     k_cache,
@@ -227,7 +227,7 @@ def flash_attn_with_kvcache(
     return (out, softmax_lse, *rest) if return_softmax_lse else out
 
 
-@maybe_wrap_debug_kernel(op_name="sgl_kernel.flash_attn.flash_attn_varlen_func")
+@maybe_wrap_debug_kernel
 def flash_attn_varlen_func(
     q,
     k,

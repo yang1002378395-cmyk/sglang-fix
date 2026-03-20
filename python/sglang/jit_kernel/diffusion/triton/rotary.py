@@ -65,9 +65,7 @@ def _rotary_embedding_kernel(
         tl.store(output_row_ptr + offsets_x2, o2_vals.to(x2_vals.dtype), mask=mask)
 
 
-@maybe_wrap_jit_kernel_debug(
-    op_name="jit_kernel.diffusion.triton.apply_rotary_embedding"
-)
+@maybe_wrap_jit_kernel_debug
 def apply_rotary_embedding(
     x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor, interleaved: bool = False
 ) -> torch.Tensor:
@@ -114,9 +112,7 @@ def apply_rotary_embedding(
 if current_platform.is_npu():
     from .npu_fallback import apply_rotary_embedding_native
 
-    @maybe_wrap_jit_kernel_debug(
-        op_name="jit_kernel.diffusion.triton.apply_rotary_embedding"
-    )
+    @maybe_wrap_jit_kernel_debug
     def apply_rotary_embedding(
         x: torch.Tensor,
         cos: torch.Tensor,
@@ -129,9 +125,7 @@ if current_platform.is_npu():
 if current_platform.is_mps():
     from .mps_fallback import apply_rotary_embedding_native
 
-    @maybe_wrap_jit_kernel_debug(
-        op_name="jit_kernel.diffusion.triton.apply_rotary_embedding"
-    )
+    @maybe_wrap_jit_kernel_debug
     def apply_rotary_embedding(
         x: torch.Tensor,
         cos: torch.Tensor,

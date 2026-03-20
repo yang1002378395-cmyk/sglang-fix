@@ -1,6 +1,6 @@
 ---
 name: debug-cuda-crash
-description: Tutorial for debugging CUDA crashes in SGLang using kernel API logging
+description: Call this skill when you need to debug CUDA crashes in SGLang using kernel API logging
 ---
 
 # Tutorial: Debugging CUDA Crashes with Kernel API Logging

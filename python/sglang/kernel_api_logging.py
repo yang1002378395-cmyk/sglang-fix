@@ -351,15 +351,24 @@ def _log_section(title: str, data: dict[str, Any]) -> None:
             _logger.debug("    %s", line)
 
 
-def _infer_func_name(func: Callable, args: tuple[Any, ...]) -> str:
-    if args and hasattr(args[0], "__class__"):
-        try:
-            parameters = tuple(inspect.signature(func).parameters.values())
-        except (TypeError, ValueError):
-            parameters = ()
-        if parameters and parameters[0].name in {"self", "cls"}:
-            return f"{args[0].__class__.__name__}.{func.__name__}"
-    return func.__name__
+def _infer_func_name(func: Callable) -> str:
+    qualname = getattr(func, "__qualname__", getattr(func, "__name__", "unknown"))
+    qualname = qualname.replace(".<locals>.", ".").replace("<locals>.", "")
+
+    module = getattr(func, "__module__", "")
+    for prefix in ("sglang.", "sgl_kernel."):
+        if module.startswith(prefix):
+            module = module[len(prefix) :]
+            break
+
+    if module and module not in {"__main__", "builtins"}:
+        return f"{module}.{qualname}"
+
+    source_path = inspect.getsourcefile(func)
+    if source_path is not None:
+        return f"{Path(source_path).stem}.{qualname}"
+
+    return qualname
 
 
 def debug_kernel_api(
@@ -378,7 +387,7 @@ def debug_kernel_api(
             if _is_compiling():
                 return f(*args, **kwargs)
 
-            func_name = op_name or _infer_func_name(f, args)
+            func_name = op_name or _infer_func_name(f)
             dump_dir: Path | None = None
             positional_args = args
             try:

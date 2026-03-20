@@ -22,7 +22,7 @@ def _jit_timestep_embedding_module(dtype: torch.dtype) -> Module:
     )
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.timestep_embedding.timestep_embedding")
+@maybe_wrap_jit_kernel_debug
 def timestep_embedding(
     t: torch.Tensor,
     dim: int,

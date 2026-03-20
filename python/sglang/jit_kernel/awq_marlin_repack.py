@@ -20,7 +20,7 @@ def _jit_awq_marlin_repack_module() -> Module:
     )
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.awq_marlin_repack")
+@maybe_wrap_jit_kernel_debug
 def awq_marlin_repack(
     b_q_weight: torch.Tensor,
     size_k: int,
@@ -39,7 +39,7 @@ def awq_marlin_repack(
     return out
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.awq_marlin_moe_repack")
+@maybe_wrap_jit_kernel_debug
 def awq_marlin_moe_repack(
     b_q_weight: torch.Tensor,
     perm: torch.Tensor,

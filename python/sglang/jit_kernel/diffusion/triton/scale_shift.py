@@ -445,9 +445,7 @@ def fuse_scale_shift_gate_select01_kernel_blc_opt(
     tl.store(gate_out_ptr + go_off, gate, mask=mask)
 
 
-@maybe_wrap_jit_kernel_debug(
-    op_name="jit_kernel.diffusion.triton.fuse_scale_shift_kernel"
-)
+@maybe_wrap_jit_kernel_debug
 def fuse_scale_shift_kernel(
     x: torch.Tensor,
     scale: torch.Tensor,
@@ -567,9 +565,7 @@ def fuse_scale_shift_kernel(
     return output
 
 
-@maybe_wrap_jit_kernel_debug(
-    op_name="jit_kernel.diffusion.triton.fuse_scale_shift_gate_select01_kernel"
-)
+@maybe_wrap_jit_kernel_debug
 def fuse_scale_shift_gate_select01_kernel(
     x: torch.Tensor,
     scale0: torch.Tensor,
@@ -642,9 +638,7 @@ def fuse_scale_shift_gate_select01_kernel(
     return output, gate_out
 
 
-@maybe_wrap_jit_kernel_debug(
-    op_name="jit_kernel.diffusion.triton.fuse_layernorm_scale_shift_gate_select01_kernel"
-)
+@maybe_wrap_jit_kernel_debug
 def fuse_layernorm_scale_shift_gate_select01_kernel(
     x: torch.Tensor,
     weight: torch.Tensor | None,
@@ -734,9 +728,7 @@ def fuse_layernorm_scale_shift_gate_select01_kernel(
     return output, gate_out
 
 
-@maybe_wrap_jit_kernel_debug(
-    op_name="jit_kernel.diffusion.triton.fuse_residual_layernorm_scale_shift_gate_select01_kernel"
-)
+@maybe_wrap_jit_kernel_debug
 def fuse_residual_layernorm_scale_shift_gate_select01_kernel(
     x: torch.Tensor,
     residual: torch.Tensor,
@@ -847,9 +839,7 @@ def fuse_residual_layernorm_scale_shift_gate_select01_kernel(
 if current_platform.is_npu():
     from .npu_fallback import fuse_scale_shift_native
 
-    @maybe_wrap_jit_kernel_debug(
-        op_name="jit_kernel.diffusion.triton.fuse_scale_shift_kernel"
-    )
+    @maybe_wrap_jit_kernel_debug
     def fuse_scale_shift_kernel(
         x: torch.Tensor,
         scale: torch.Tensor,
@@ -869,9 +859,7 @@ if current_platform.is_mps():
         fuse_scale_shift_kernel_native,
     )
 
-    @maybe_wrap_jit_kernel_debug(
-        op_name="jit_kernel.diffusion.triton.fuse_scale_shift_kernel"
-    )
+    @maybe_wrap_jit_kernel_debug
     def fuse_scale_shift_kernel(
         x: torch.Tensor,
         scale: torch.Tensor,
@@ -884,9 +872,7 @@ if current_platform.is_mps():
             x, scale, shift, scale_constant, block_l, block_c
         )
 
-    @maybe_wrap_jit_kernel_debug(
-        op_name="jit_kernel.diffusion.triton.fuse_scale_shift_gate_select01_kernel"
-    )
+    @maybe_wrap_jit_kernel_debug
     def fuse_scale_shift_gate_select01_kernel(
         x: torch.Tensor,
         scale0: torch.Tensor,

@@ -32,7 +32,7 @@ def _or_empty(
     return t if t is not None else torch.empty(0, device=device, dtype=dtype)
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.gptq_marlin.gptq_marlin_gemm")
+@maybe_wrap_jit_kernel_debug
 def gptq_marlin_gemm(
     a: torch.Tensor,
     c: Optional[torch.Tensor],

@@ -23,7 +23,7 @@ def _jit_per_tensor_quant_fp8_module(is_static: bool, dtype: torch.dtype) -> Mod
     )
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.per_tensor_quant_fp8")
+@maybe_wrap_jit_kernel_debug
 @register_custom_op(
     op_name="per_tensor_quant_fp8",
     mutates_args=["output_q", "output_s"],

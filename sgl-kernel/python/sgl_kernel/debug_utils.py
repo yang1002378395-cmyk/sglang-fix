@@ -4,7 +4,7 @@ from typing import Any, Callable, TypeVar, cast, overload
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def _wrap_debug_kernel(func: F, op_name: str) -> F:
+def _wrap_debug_kernel(func: F, op_name: str | None = None) -> F:
     try:
         if int(os.environ.get("SGLANG_KERNEL_API_LOGLEVEL", "0")) == 0:
             return func
@@ -25,19 +25,20 @@ def _wrap_debug_kernel(func: F, op_name: str) -> F:
 
 
 @overload
+def maybe_wrap_debug_kernel(func: F) -> F: ...
+
+
+@overload
 def maybe_wrap_debug_kernel(func: F, op_name: str) -> F: ...
 
 
 @overload
-def maybe_wrap_debug_kernel(*, op_name: str) -> Callable[[F], F]: ...
+def maybe_wrap_debug_kernel(*, op_name: str | None = None) -> Callable[[F], F]: ...
 
 
 def maybe_wrap_debug_kernel(
     func: F | None = None, op_name: str | None = None
 ) -> F | Callable[[F], F]:
-    if op_name is None:
-        raise TypeError("op_name must be provided")
-
     if func is None:
         return lambda wrapped_func: _wrap_debug_kernel(wrapped_func, op_name)
 

@@ -452,7 +452,7 @@ class LayerNormFn:
         return y
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.diffusion.triton.layer_norm_fn")
+@maybe_wrap_jit_kernel_debug
 def layer_norm_fn(
     x,
     weight,
@@ -540,7 +540,7 @@ def _norm_infer_kernel(
     tl.store(Y + cols, y, mask=cols < N)
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.diffusion.triton.norm_infer")
+@maybe_wrap_jit_kernel_debug
 def norm_infer(
     x: Tensor,
     weight: Optional[Tensor],
@@ -583,7 +583,7 @@ def norm_infer(
     return out
 
 
-@maybe_wrap_jit_kernel_debug(op_name="jit_kernel.diffusion.triton.rms_norm_fn")
+@maybe_wrap_jit_kernel_debug
 def rms_norm_fn(
     x,
     weight,
@@ -630,7 +630,7 @@ from sglang.multimodal_gen.runtime.platforms import current_platform
 if current_platform.is_mps():
     from .mps_fallback import norm_infer_native, rms_norm_fn_native
 
-    @maybe_wrap_jit_kernel_debug(op_name="jit_kernel.diffusion.triton.norm_infer")
+    @maybe_wrap_jit_kernel_debug
     def norm_infer(
         x: Tensor,
         weight: Optional[Tensor],
@@ -641,7 +641,7 @@ if current_platform.is_mps():
     ):
         return norm_infer_native(x, weight, bias, eps, is_rms_norm, out)
 
-    @maybe_wrap_jit_kernel_debug(op_name="jit_kernel.diffusion.triton.rms_norm_fn")
+    @maybe_wrap_jit_kernel_debug
     def rms_norm_fn(
         x,
         weight,

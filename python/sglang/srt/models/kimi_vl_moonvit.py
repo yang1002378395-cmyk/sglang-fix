@@ -67,7 +67,7 @@ from sglang.srt.layers.quantization.modelslim.modelslim import ModelSlimConfig
 from sglang.srt.utils import add_prefix
 
 
-@debug_kernel_api(op_name="KimiVLMoonViT.multihead_attention")
+@debug_kernel_api
 def multihead_attention(
     q: torch.Tensor,
     k: torch.Tensor,
