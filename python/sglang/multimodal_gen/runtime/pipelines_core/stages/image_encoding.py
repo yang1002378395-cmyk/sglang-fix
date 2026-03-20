@@ -34,10 +34,6 @@ from sglang.multimodal_gen.runtime.pipelines_core.stages.validators import (
 from sglang.multimodal_gen.runtime.platforms import current_platform
 from sglang.multimodal_gen.runtime.server_args import ServerArgs
 from sglang.multimodal_gen.runtime.utils.logging_utils import init_logger
-from sglang.multimodal_gen.runtime.utils.tensor_dump import (
-    dump_request_metadata,
-    dump_value,
-)
 from sglang.multimodal_gen.utils import PRECISION_TO_TYPE
 
 logger = init_logger(__name__)
@@ -194,10 +190,6 @@ class ImageEncodingStage(PipelineStage):
             batch.prompt_embeds.append(torch.cat(all_prompt_embeds, dim=0))
         if all_neg_prompt_embeds:
             batch.negative_prompt_embeds.append(torch.cat(all_neg_prompt_embeds, dim=0))
-
-        dump_request_metadata(batch)
-        dump_value("prompt_embeds", batch.prompt_embeds[:1], batch=batch)
-        dump_value("negative_prompt_embeds", batch.negative_prompt_embeds, batch=batch)
 
         self.offload_model()
 
@@ -360,12 +352,6 @@ class ImageVAEEncodingStage(PipelineStage):
         batch.image_latent = torch.cat(all_image_latents, dim=1)
         if condition_latents is not None:
             prepare_condition_image_latent_ids(condition_latents, batch)
-
-        dump_request_metadata(batch)
-        dump_value("image_latent", batch.image_latent, batch=batch)
-        dump_value(
-            "condition_image_latent_ids", batch.condition_image_latent_ids, batch=batch
-        )
 
         self.offload_model()
         return batch

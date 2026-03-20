@@ -78,10 +78,6 @@ from sglang.multimodal_gen.runtime.utils.layerwise_offload import OffloadableDiT
 from sglang.multimodal_gen.runtime.utils.logging_utils import init_logger
 from sglang.multimodal_gen.runtime.utils.perf_logger import StageProfiler
 from sglang.multimodal_gen.runtime.utils.profiler import SGLDiffusionProfiler
-from sglang.multimodal_gen.runtime.utils.tensor_dump import (
-    dump_request_metadata,
-    dump_value,
-)
 from sglang.multimodal_gen.utils import dict_to_3d_list, masks_like
 
 logger = init_logger(__name__)
@@ -691,41 +687,6 @@ class DenoisingStage(PipelineStage):
             "seq_len": seq_len,
             "guidance": guidance,
         }
-
-    def _gather_sp_tensor_for_dump(
-        self, tensor: torch.Tensor | None, batch: Req, server_args: ServerArgs
-    ) -> torch.Tensor | None:
-        if tensor is None:
-            return None
-        if not (
-            get_sp_world_size() > 1 and getattr(batch, "did_sp_shard_latents", False)
-        ):
-            return tensor
-
-        gathered = server_args.pipeline_config.gather_latents_for_sp(tensor)
-        if gathered.dim() == 4:
-            gathered = sequence_model_parallel_all_gather(gathered.contiguous(), dim=2)
-            if getattr(batch, "_zimage_sp_swap_hw", False):
-                gathered = gathered.transpose(2, 3).contiguous()
-        if hasattr(batch, "raw_latent_shape") and gathered.dim() == 3:
-            orig_s = batch.raw_latent_shape[1]
-            if gathered.shape[1] > orig_s:
-                gathered = gathered[:, :orig_s, :]
-        return gathered
-
-    def _dump_step0_noise(
-        self,
-        name: str,
-        tensor: torch.Tensor | None,
-        batch: Req,
-        server_args: ServerArgs,
-    ) -> None:
-        dump_value(f"{name}_step0", tensor, batch=batch)
-        dump_value(
-            f"{name}_step0_full",
-            self._gather_sp_tensor_for_dump(tensor, batch, server_args),
-            batch=batch,
-        )
 
     def _post_denoising_loop(
         self,
@@ -1428,7 +1389,6 @@ class DenoisingStage(PipelineStage):
         noise_pred_cond: torch.Tensor | None = None
         noise_pred_uncond: torch.Tensor | None = None
         cfg_rank = get_classifier_free_guidance_rank()
-        dump_request_metadata(batch)
         # positive pass
         if not (server_args.enable_cfg_parallel and cfg_rank != 0):
             batch.is_cfg_negative = False

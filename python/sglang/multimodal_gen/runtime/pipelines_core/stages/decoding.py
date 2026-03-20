@@ -23,10 +23,6 @@ from sglang.multimodal_gen.runtime.pipelines_core.stages.validators import (
 from sglang.multimodal_gen.runtime.platforms import current_platform
 from sglang.multimodal_gen.runtime.server_args import ServerArgs, get_global_server_args
 from sglang.multimodal_gen.runtime.utils.logging_utils import init_logger
-from sglang.multimodal_gen.runtime.utils.tensor_dump import (
-    dump_request_metadata,
-    dump_value,
-)
 from sglang.multimodal_gen.utils import PRECISION_TO_TYPE
 
 logger = init_logger(__name__)
@@ -244,8 +240,6 @@ class DecodingStage(PipelineStage):
             metrics=batch.metrics,
             noise_pred=None,
         )
-        dump_request_metadata(batch)
-        dump_value("decoded_output", frames, batch=batch)
 
         # Keep VAE resident during warmup; the real request needs it next.
         if not getattr(batch, "is_warmup", False):

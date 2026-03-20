@@ -21,6 +21,9 @@ from sglang.jit_kernel.diffusion.triton.scale_shift import (
 )
 from sglang.multimodal_gen.configs.models.dits.qwenimage import QwenImageDitConfig
 from sglang.multimodal_gen.runtime.distributed import get_local_torch_device
+from sglang.multimodal_gen.runtime.distributed.parallel_state import (
+    get_sp_world_size,
+)
 from sglang.multimodal_gen.runtime.layers.attention import USPAttention
 from sglang.multimodal_gen.runtime.layers.elementwise import MulAdd
 from sglang.multimodal_gen.runtime.layers.layernorm import (
@@ -54,6 +57,16 @@ try:
     from nunchaku.models.attention import NunchakuFeedForward  # type: ignore[import]
 except Exception:
     NunchakuFeedForward = None
+
+
+def _local_seq_len(seq_len: int, sp_world_size: int) -> int:
+    """get the local seq len, from seq_len padding to the next multiple of sp_world_size, then shard to local"""
+    if sp_world_size <= 1:
+        return seq_len
+    padded_len = seq_len
+    if padded_len % sp_world_size != 0:
+        padded_len += sp_world_size - (padded_len % sp_world_size)
+    return padded_len // sp_world_size
 
 
 def _get_qkv_projections(
@@ -1089,22 +1102,8 @@ class QwenImageTransformer2DModel(CachableDiT, OffloadableDiTMixin):
 
     @functools.lru_cache(maxsize=50)
     def build_modulate_index(self, img_shapes: tuple[int, int, int], device):
-        try:
-            from sglang.multimodal_gen.runtime.distributed.parallel_state import (
-                get_sp_world_size,
-            )
 
-            sp_world_size = get_sp_world_size()
-        except Exception:
-            sp_world_size = 1
-
-        def _local_seq_len(seq_len: int) -> int:
-            if sp_world_size <= 1:
-                return seq_len
-            padded_len = seq_len
-            if padded_len % sp_world_size != 0:
-                padded_len += sp_world_size - (padded_len % sp_world_size)
-            return padded_len // sp_world_size
+        sp_world_size = get_sp_world_size()
 
         modulate_index_list = []
         for sample in img_shapes:

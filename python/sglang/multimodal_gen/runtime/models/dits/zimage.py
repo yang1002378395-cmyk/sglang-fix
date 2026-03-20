@@ -288,6 +288,7 @@ class ZImageAttention(nn.Module):
             and get_sp_world_size() > 1
             and get_ring_parallel_world_size() == 1
         ):
+            # the cap (last num_replicated_suffix tokens), as condition, should be replicated
             q_shard, q_rep = (
                 q[:, :-num_replicated_suffix],
                 q[:, -num_replicated_suffix:],

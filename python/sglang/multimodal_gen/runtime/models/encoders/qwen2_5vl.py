@@ -516,7 +516,7 @@ class Qwen2_5_VLModel(nn.Module):
                 config.vision_config
             )
             self.visual.to(torch.get_default_dtype())
-            # HF keeps the vision rotary frequencies in fp32 even when weights are bf16.
+            # keeps the vision rotary frequencies in fp32 even when weights are bf16 (as HF does)
             head_dim = (
                 config.vision_config.hidden_size // config.vision_config.num_heads
             )
