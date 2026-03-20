@@ -99,12 +99,6 @@ class HiSparseCoordinator:
             dtype=torch.int32,
             device=device,
         )
-        self.residency_map = torch.full(
-            (max_num_reqs, max_context_len),
-            -1,
-            dtype=torch.int16,
-            device=device,
-        )
         self._lru_init = torch.arange(
             self.device_buffer_size, dtype=torch.int16, device=device
         )
@@ -553,9 +547,8 @@ class HiSparseCoordinator:
         num_reqs = req_pool_indices.size(0)
         top_k_indices = self.top_k_device_locs_buffer[:num_reqs]
         top_k_indices.fill_(-1)
-        self.residency_map[:num_reqs].fill_(-1)
         # todo, adjustable for performance
-        block_size = 512
+        block_size = 1024
         load_cache_to_device_buffer_mla(
             top_k_tokens=top_k_result,
             device_buffer_tokens=self.req_device_buffer_tokens[layer_id],
@@ -564,7 +557,6 @@ class HiSparseCoordinator:
             host_cache=self.mem_pool_host.kv_buffer[layer_id],
             device_buffer=self.mem_pool_device.kv_buffer[layer_id],
             top_k_device_locs=top_k_indices,
-            residency_map=self.residency_map,
             req_pool_indices=req_pool_indices,
             seq_lens=seq_lens,
             lru_slots=self.lru_slots[layer_id],

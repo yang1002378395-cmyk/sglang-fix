@@ -15,6 +15,12 @@ namespace {
 
 constexpr int WARP_SIZE = 32;
 constexpr int32_t TOKEN_HIT = 0xFFFFFFFF;
+constexpr int32_t HASH_EMPTY = -1;
+
+// Knuth multiplicative hash for open-addressing table of size hash_size.
+__device__ __forceinline__ int hash_slot(int32_t key, int hash_size) {
+  return ((uint32_t)key * 2654435761u) % (uint32_t)hash_size;
+}
 
 __device__ __forceinline__ void
 transfer_item_warp(int32_t lane_id, const void* src_addr, void* dst_addr, int64_t item_size_bytes) {
@@ -62,14 +68,12 @@ __global__ void load_cache_to_device_buffer_kernel(
     void* __restrict__ device_buffer_k,
     void* __restrict__ device_buffer_v,
     int32_t* __restrict__ top_k_device_locs,
-    int16_t* __restrict__ residency_map,
     const IdxType* __restrict__ req_pool_indices,
     const IdxType* __restrict__ seq_lens,
     int16_t* __restrict__ lru_slots,
     const int32_t* __restrict__ num_real_reqs,
     int64_t buffer_stride_0,
     int64_t host_stride,
-    int64_t residency_map_stride,
     int64_t lru_slot_stride_0,
     int64_t top_k_tokens_stride,
     int64_t top_k_device_locs_stride,
@@ -95,7 +99,6 @@ __global__ void load_cache_to_device_buffer_kernel(
   // Calculate offsets for this request
   const int32_t* req_top_k_tokens = top_k_tokens + bid * top_k_tokens_stride;
   int32_t* req_top_k_device_locs = top_k_device_locs + bid * top_k_device_locs_stride;
-  int16_t* req_residency_map = residency_map + bid * residency_map_stride;
 
   const int64_t buffer_offset = rid * buffer_stride_0;
   int32_t* req_device_buffer_tokens = device_buffer_tokens + buffer_offset;
@@ -123,20 +126,32 @@ __global__ void load_cache_to_device_buffer_kernel(
   __shared__ int32_t s_evict_chunk_offset[NUM_BUFFER_CHUNKS + 1];
   // Compacted slot ordering: [hits fwd→  ...  ←evictables bwd]
   __shared__ int16_t s_lru_slots_out[HOT_BUFFER_SIZE];
+  // Open-addressing hash table: top-k token_id → top-k index
+  constexpr int HASH_SIZE = NUM_TOP_K * 2;
+  __shared__ int32_t s_hash_keys[HASH_SIZE];
+  __shared__ int16_t s_hash_vals[HASH_SIZE];
 
   __shared__ int32_t s_total_hits;
   __shared__ int32_t s_newest_hit;
 
-  // Initialize shared memory counters used across phases.
+  // Initialize shared memory: counters, hash table, prefix-sum offsets.
   if (tid == 0) {
     s_total_hits = 0;
     s_newest_hit = 0;
   }
+  for (int i = tid; i < HASH_SIZE; i += BLOCK_SIZE) {
+    s_hash_keys[i] = HASH_EMPTY;
+  }
+  for (int i = tid; i < NUM_BUFFER_CHUNKS + 1; i += BLOCK_SIZE) {
+    s_chunk_offset[i] = 0;
+    s_evict_chunk_offset[i] = 0;
+  }
+  __syncthreads();
 
   const int newest_slot = HOT_BUFFER_SIZE;
   const int32_t newest_token = seq_len - 1;
 
-  // Build residency_map for top-k tokens and reset shared buffers.
+  // Insert top-k tokens into shared-memory hash table.
   for (int i = tid; i < NUM_TOP_K; i += BLOCK_SIZE) {
     int32_t token_idx = req_top_k_tokens[i];
     if (token_idx == newest_token) {
@@ -146,13 +161,17 @@ __global__ void load_cache_to_device_buffer_kernel(
       req_top_k_device_locs[i] = req_device_buffer_locs[newest_slot];
       s_newest_hit = 1;
     } else {
-      req_residency_map[token_idx] = i;
+      int slot = hash_slot(token_idx, HASH_SIZE);
+      while (true) {
+        int32_t old = atomicCAS(&s_hash_keys[slot], HASH_EMPTY, token_idx);
+        if (old == HASH_EMPTY || old == token_idx) {
+          s_hash_vals[slot] = static_cast<int16_t>(i);
+          break;
+        }
+        slot = (slot + 1) % HASH_SIZE;
+      }
       s_top_k_tokens[i] = token_idx;
     }
-  }
-  for (int i = tid; i < NUM_BUFFER_CHUNKS + 1; i += BLOCK_SIZE) {
-    s_chunk_offset[i] = 0;
-    s_evict_chunk_offset[i] = 0;
   }
   __syncthreads();
 
@@ -167,7 +186,19 @@ __global__ void load_cache_to_device_buffer_kernel(
     const bool has_valid_slot = has_valid_chunk && (slot_idx < HOT_BUFFER_SIZE);
     const int16_t buf_slot = has_valid_slot ? req_lru_slots[slot_idx] : -1;
     int32_t my_buffer_token = (buf_slot >= 0) ? req_device_buffer_tokens[buf_slot] : -1;
-    int my_found_top_k_idx = my_buffer_token >= 0 ? req_residency_map[my_buffer_token] : -1;
+    int my_found_top_k_idx = -1;
+    if (my_buffer_token >= 0) {
+      int h = hash_slot(my_buffer_token, HASH_SIZE);
+      while (true) {
+        int32_t k = s_hash_keys[h];
+        if (k == my_buffer_token) {
+          my_found_top_k_idx = static_cast<int32_t>(s_hash_vals[h]);
+          break;
+        }
+        if (k == HASH_EMPTY) break;
+        h = (h + 1) % HASH_SIZE;
+      }
+    }
     bool is_hit = my_found_top_k_idx >= 0;
     bool is_evictable = has_valid_slot && !is_hit;
 
@@ -228,8 +259,9 @@ __global__ void load_cache_to_device_buffer_kernel(
       }
     }
   }
-  // Reset offsets for the miss counting phase.
-  for (int i = tid; i < NUM_BUFFER_CHUNKS + 1; i += BLOCK_SIZE) {
+
+  // Reset offsets for the miss counting phase (only NUM_TOKEN_CHUNKS + 1 entries needed).
+  for (int i = tid; i < NUM_TOKEN_CHUNKS + 1; i += BLOCK_SIZE) {
     s_chunk_offset[i] = 0;
   }
   __syncthreads();
@@ -289,96 +321,20 @@ __global__ void load_cache_to_device_buffer_kernel(
     const int32_t miss_token = s_top_k_tokens[miss_idx];
     const int16_t evict_slot = s_lru_slots_out[HOT_BUFFER_SIZE - 1 - miss_idx];
 
-    if (evict_slot >= 0 && evict_slot < HOT_BUFFER_SIZE && miss_token >= 0) {
-      const int64_t src_loc = req_host_cache_locs[miss_token];
-      const int64_t dst_loc = static_cast<int64_t>(req_device_buffer_locs[evict_slot]);
+    const int64_t src_loc = req_host_cache_locs[miss_token];
+    const int64_t dst_loc = static_cast<int64_t>(req_device_buffer_locs[evict_slot]);
 
-      const auto src_k = static_cast<const char*>(host_cache_k) + src_loc * item_size_bytes;
-      auto dst_k = static_cast<char*>(device_buffer_k) + dst_loc * item_size_bytes;
-      transfer_item_warp(lane_id, src_k, dst_k, item_size_bytes);
+    const auto src_k = static_cast<const char*>(host_cache_k) + src_loc * item_size_bytes;
+    auto dst_k = static_cast<char*>(device_buffer_k) + dst_loc * item_size_bytes;
+    transfer_item_warp(lane_id, src_k, dst_k, item_size_bytes);
 
-      if constexpr (!IsMLA) {
-        const auto src_v = static_cast<const char*>(host_cache_v) + src_loc * item_size_bytes;
-        auto dst_v = static_cast<char*>(device_buffer_v) + dst_loc * item_size_bytes;
-        transfer_item_warp(lane_id, src_v, dst_v, item_size_bytes);
-      }
+    if constexpr (!IsMLA) {
+      const auto src_v = static_cast<const char*>(host_cache_v) + src_loc * item_size_bytes;
+      auto dst_v = static_cast<char*>(device_buffer_v) + dst_loc * item_size_bytes;
+      transfer_item_warp(lane_id, src_v, dst_v, item_size_bytes);
     }
   }
 }
-
-template <int BLOCK_SIZE, int NUM_TOP_K, int HOT_BUFFER_SIZE, bool IsMLA>
-struct SparseCacheKernel {
-  template <typename IdxType>
-  static void
-  run(tvm::ffi::TensorView top_k_tokens,
-      tvm::ffi::TensorView device_buffer_tokens,
-      tvm::ffi::TensorView host_cache_locs,
-      tvm::ffi::TensorView device_buffer_locs,
-      tvm::ffi::TensorView host_cache_k,
-      tvm::ffi::TensorView host_cache_v,
-      tvm::ffi::TensorView device_buffer_k,
-      tvm::ffi::TensorView device_buffer_v,
-      tvm::ffi::TensorView top_k_device_locs,
-      tvm::ffi::TensorView residency_map,
-      tvm::ffi::TensorView req_pool_indices,
-      tvm::ffi::TensorView seq_lens,
-      tvm::ffi::TensorView lru_slots,
-      tvm::ffi::TensorView num_real_reqs,
-      int64_t page_size,
-      int64_t item_size_bytes) {
-    using namespace host;
-
-    const int64_t bs = top_k_tokens.shape()[0];
-    const int64_t host_stride = host_cache_locs.shape()[1];
-    const int64_t buffer_stride_0 = device_buffer_tokens.strides()[0];
-    const int64_t residency_map_stride = residency_map.shape()[1];
-    const int64_t lru_slot_stride_0 = lru_slots.strides()[0];
-    const int64_t top_k_tokens_stride = top_k_tokens.strides()[0];
-    const int64_t top_k_device_locs_stride = top_k_device_locs.strides()[0];
-
-    const int32_t* top_k_tokens_ptr = static_cast<const int32_t*>(top_k_tokens.data_ptr());
-    int32_t* device_buffer_tokens_ptr = static_cast<int32_t*>(device_buffer_tokens.data_ptr());
-    const int64_t* host_cache_locs_ptr = static_cast<const int64_t*>(host_cache_locs.data_ptr());
-    const int32_t* device_buffer_locs_ptr = static_cast<const int32_t*>(device_buffer_locs.data_ptr());
-    const void* host_cache_k_ptr = host_cache_k.data_ptr();
-    const void* host_cache_v_ptr = (IsMLA || host_cache_v.ndim() == 0) ? nullptr : host_cache_v.data_ptr();
-    void* device_buffer_k_ptr = device_buffer_k.data_ptr();
-    void* device_buffer_v_ptr = (IsMLA || device_buffer_v.ndim() == 0) ? nullptr : device_buffer_v.data_ptr();
-    int32_t* top_k_device_locs_ptr = static_cast<int32_t*>(top_k_device_locs.data_ptr());
-    int16_t* residency_map_ptr = static_cast<int16_t*>(residency_map.data_ptr());
-    const IdxType* req_pool_indices_ptr = static_cast<const IdxType*>(req_pool_indices.data_ptr());
-    const IdxType* seq_lens_ptr = static_cast<const IdxType*>(seq_lens.data_ptr());
-    int16_t* lru_slots_ptr = static_cast<int16_t*>(lru_slots.data_ptr());
-    const int32_t* num_real_reqs_ptr = static_cast<const int32_t*>(num_real_reqs.data_ptr());
-
-    const auto device = LaunchKernel::resolve_device(top_k_tokens.device());
-
-    LaunchKernel(bs, BLOCK_SIZE, device)(
-        load_cache_to_device_buffer_kernel<BLOCK_SIZE, NUM_TOP_K, HOT_BUFFER_SIZE, IsMLA, IdxType>,
-        top_k_tokens_ptr,
-        device_buffer_tokens_ptr,
-        host_cache_locs_ptr,
-        device_buffer_locs_ptr,
-        host_cache_k_ptr,
-        host_cache_v_ptr,
-        device_buffer_k_ptr,
-        device_buffer_v_ptr,
-        top_k_device_locs_ptr,
-        residency_map_ptr,
-        req_pool_indices_ptr,
-        seq_lens_ptr,
-        lru_slots_ptr,
-        num_real_reqs_ptr,
-        buffer_stride_0,
-        host_stride,
-        residency_map_stride,
-        lru_slot_stride_0,
-        top_k_tokens_stride,
-        top_k_device_locs_stride,
-        page_size,
-        item_size_bytes);
-  }
-};
 
 template <int BLOCK_SIZE, int NUM_TOP_K, int HOT_BUFFER_SIZE, bool IsMLA>
 void load_cache_to_device_buffer(
@@ -391,52 +347,53 @@ void load_cache_to_device_buffer(
     tvm::ffi::TensorView device_buffer_k,
     tvm::ffi::TensorView device_buffer_v,
     tvm::ffi::TensorView top_k_device_locs,
-    tvm::ffi::TensorView residency_map,
     tvm::ffi::TensorView req_pool_indices,
     tvm::ffi::TensorView seq_lens,
     tvm::ffi::TensorView lru_slots,
     tvm::ffi::TensorView num_real_reqs,
     int64_t page_size,
     int64_t item_size_bytes) {
-  const auto& dtype = req_pool_indices.dtype();
-  const bool is_int64 = (dtype.bits == 64);
+  using namespace host;
 
-  if (is_int64) {
-    SparseCacheKernel<BLOCK_SIZE, NUM_TOP_K, HOT_BUFFER_SIZE, IsMLA>::template run<int64_t>(
-        top_k_tokens,
-        device_buffer_tokens,
-        host_cache_locs,
-        device_buffer_locs,
-        host_cache_k,
-        host_cache_v,
-        device_buffer_k,
-        device_buffer_v,
-        top_k_device_locs,
-        residency_map,
-        req_pool_indices,
-        seq_lens,
-        lru_slots,
-        num_real_reqs,
+  const int64_t bs = top_k_tokens.shape()[0];
+  const int64_t host_stride = host_cache_locs.shape()[1];
+  const int64_t buffer_stride_0 = device_buffer_tokens.strides()[0];
+  const int64_t lru_slot_stride_0 = lru_slots.strides()[0];
+  const int64_t top_k_tokens_stride = top_k_tokens.strides()[0];
+  const int64_t top_k_device_locs_stride = top_k_device_locs.strides()[0];
+  const auto device = LaunchKernel::resolve_device(top_k_tokens.device());
+
+  // Dispatch on IdxType (int32 for CUDA graph mode, int64 otherwise).
+  auto launch = [&](auto idx_type_tag) {
+    using IdxType = decltype(idx_type_tag);
+    LaunchKernel(bs, BLOCK_SIZE, device)(
+        load_cache_to_device_buffer_kernel<BLOCK_SIZE, NUM_TOP_K, HOT_BUFFER_SIZE, IsMLA, IdxType>,
+        static_cast<const int32_t*>(top_k_tokens.data_ptr()),
+        static_cast<int32_t*>(device_buffer_tokens.data_ptr()),
+        static_cast<const int64_t*>(host_cache_locs.data_ptr()),
+        static_cast<const int32_t*>(device_buffer_locs.data_ptr()),
+        host_cache_k.data_ptr(),
+        (IsMLA || host_cache_v.ndim() == 0) ? (const void*)nullptr : host_cache_v.data_ptr(),
+        device_buffer_k.data_ptr(),
+        (IsMLA || device_buffer_v.ndim() == 0) ? (void*)nullptr : device_buffer_v.data_ptr(),
+        static_cast<int32_t*>(top_k_device_locs.data_ptr()),
+        static_cast<const IdxType*>(req_pool_indices.data_ptr()),
+        static_cast<const IdxType*>(seq_lens.data_ptr()),
+        static_cast<int16_t*>(lru_slots.data_ptr()),
+        static_cast<const int32_t*>(num_real_reqs.data_ptr()),
+        buffer_stride_0,
+        host_stride,
+        lru_slot_stride_0,
+        top_k_tokens_stride,
+        top_k_device_locs_stride,
         page_size,
         item_size_bytes);
+  };
+
+  if (req_pool_indices.dtype().bits == 64) {
+    launch(int64_t{});
   } else {
-    SparseCacheKernel<BLOCK_SIZE, NUM_TOP_K, HOT_BUFFER_SIZE, IsMLA>::template run<int32_t>(
-        top_k_tokens,
-        device_buffer_tokens,
-        host_cache_locs,
-        device_buffer_locs,
-        host_cache_k,
-        host_cache_v,
-        device_buffer_k,
-        device_buffer_v,
-        top_k_device_locs,
-        residency_map,
-        req_pool_indices,
-        seq_lens,
-        lru_slots,
-        num_real_reqs,
-        page_size,
-        item_size_bytes);
+    launch(int32_t{});
   }
 }
 
