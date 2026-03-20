@@ -643,7 +643,7 @@ jobs:
       - name: Install dependencies
         timeout-minutes: 20
         run: |
-          CUSTOM_BUILD_SGL_KERNEL=${{needs.check-changes.outputs.sgl_kernel}} IS_BLACKWELL=1 bash scripts/ci/cuda/ci_install_dependency.sh diffusion
+          CUSTOM_BUILD_SGL_KERNEL=${{needs.check-changes.outputs.sgl_kernel}} bash scripts/ci/cuda/ci_install_dependency.sh diffusion
 
       - name: Run sgl-kernel unit tests on B200
         timeout-minutes: 30
@@ -889,8 +889,6 @@ jobs:
       )
     runs-on: 1-gpu-5090
     timeout-minutes: 240
-    env:
-      IS_BLACKWELL: "1"
     strategy:
       fail-fast: false
       max-parallel: 8
@@ -1078,7 +1076,7 @@ jobs:
       - name: Install dependencies
         timeout-minutes: 20
         run: |
-          CUSTOM_BUILD_SGL_KERNEL=${{needs.check-changes.outputs.sgl_kernel}} IS_BLACKWELL=1 bash scripts/ci/cuda/ci_install_dependency.sh
+          CUSTOM_BUILD_SGL_KERNEL=${{needs.check-changes.outputs.sgl_kernel}} bash scripts/ci/cuda/ci_install_dependency.sh
 
       - name: Run test
         timeout-minutes: 30
@@ -1088,12 +1086,12 @@ jobs:
           if [[ "${{ needs.check-changes.outputs.continue_on_error }}" == "true" ]]; then
             CONTINUE_ON_ERROR_FLAG="--continue-on-error"
           fi
-          IS_BLACKWELL=1 python3 run_suite.py --hw cuda --suite stage-b-test-4-gpu-b200 $CONTINUE_ON_ERROR_FLAG
+          python3 run_suite.py --hw cuda --suite stage-b-test-4-gpu-b200 $CONTINUE_ON_ERROR_FLAG
 
       - name: Run FA4 jit_kernel tests (SM100+)
         timeout-minutes: 10
         run: |
-          IS_BLACKWELL=1 python3 -m pytest -q python/sglang/jit_kernel/tests/test_flash_attention_4.py
+          python3 -m pytest -q python/sglang/jit_kernel/tests/test_flash_attention_4.py
 
       - uses: ./.github/actions/upload-cuda-coredumps
         if: always()
@@ -1577,7 +1575,7 @@ jobs:
       - name: Install dependencies
         timeout-minutes: 20
         run: |
-          CUSTOM_BUILD_SGL_KERNEL=${{needs.check-changes.outputs.sgl_kernel}} IS_BLACKWELL=1 bash scripts/ci/cuda/ci_install_dependency.sh
+          CUSTOM_BUILD_SGL_KERNEL=${{needs.check-changes.outputs.sgl_kernel}} bash scripts/ci/cuda/ci_install_dependency.sh
 
       - name: Run test
         timeout-minutes: 30
@@ -1587,7 +1585,7 @@ jobs:
           if [[ "${{ needs.check-changes.outputs.continue_on_error }}" == "true" ]]; then
             CONTINUE_ON_ERROR_FLAG="--continue-on-error"
           fi
-          IS_BLACKWELL=1 python3 run_suite.py --hw cuda --suite stage-c-test-4-gpu-b200 --auto-partition-id ${{ matrix.part }} --auto-partition-size 4 --timeout-per-file 1800 $CONTINUE_ON_ERROR_FLAG
+          python3 run_suite.py --hw cuda --suite stage-c-test-4-gpu-b200 --auto-partition-id ${{ matrix.part }} --auto-partition-size 4 --timeout-per-file 1800 $CONTINUE_ON_ERROR_FLAG
 
       - uses: ./.github/actions/upload-cuda-coredumps
         if: always()

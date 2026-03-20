@@ -3,7 +3,6 @@
 set -euxo pipefail
 
 # Set up environment variables
-IS_BLACKWELL=${IS_BLACKWELL:-0}
 CU_VERSION="cu129"
 FLASHINFER_VERSION=0.6.6
 OPTIONAL_DEPS="${1:-}"
@@ -11,6 +10,35 @@ OPTIONAL_DEPS="${1:-}"
 # Detect system architecture
 ARCH=$(uname -m)
 echo "Detected architecture: ${ARCH}"
+
+# Auto-detect GPU type via nvidia-smi (allow manual override via env var)
+GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || true)
+echo "Detected GPU: ${GPU_NAME}"
+
+if [ -z "${IS_BLACKWELL+x}" ]; then
+    if echo "$GPU_NAME" | grep -qiE "B200|GB200"; then
+        IS_BLACKWELL=1
+    else
+        IS_BLACKWELL=0
+    fi
+fi
+
+if [ -z "${IS_H200+x}" ]; then
+    if echo "$GPU_NAME" | grep -qi "H200"; then
+        IS_H200=1
+    else
+        IS_H200=0
+    fi
+fi
+
+echo "IS_BLACKWELL=${IS_BLACKWELL}"
+echo "IS_H200=${IS_H200}"
+
+# Propagate to subsequent GitHub Actions steps
+if [ -n "${GITHUB_ENV:-}" ]; then
+    echo "IS_BLACKWELL=${IS_BLACKWELL}" >> "$GITHUB_ENV"
+    echo "IS_H200=${IS_H200}" >> "$GITHUB_ENV"
+fi
 
 if [ "$CU_VERSION" = "cu130" ]; then
     NVRTC_SPEC="nvidia-cuda-nvrtc"

@@ -1,9 +1,10 @@
+import os
 import unittest
 
 from sglang.test.accuracy_test_runner import AccuracyTestParams
 from sglang.test.ci.ci_register import register_cuda_ci
 from sglang.test.run_combined_tests import run_combined_tests
-from sglang.test.test_utils import ModelLaunchSettings, is_blackwell_system
+from sglang.test.test_utils import ModelLaunchSettings
 
 register_cuda_ci(est_time=5400, suite="nightly-8-gpu-common", nightly=True)
 
@@ -56,7 +57,7 @@ class TestDeepseekV32CPSingleNode(unittest.TestCase):
     - round-robin-split: Round-robin split CP mode
     """
 
-    @unittest.skipIf(is_blackwell_system(), "Skip on B200 systems")
+    @unittest.skipIf(os.environ.get("IS_BLACKWELL") == "1", "Skip on B200 systems")
     def test_deepseek_v32_cp_variants(self):
         """Run accuracy tests for DeepSeek V3.2 CP variants."""
         variants = [

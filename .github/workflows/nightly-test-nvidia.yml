@@ -122,7 +122,6 @@ jobs:
           TRACE_BASE_URL: https://raw.githubusercontent.com/sglang-bot/sglang-ci-data/main/traces/${{ github.run_id }}
           PERFETTO_RELAY_URL: ${{ vars.PERFETTO_RELAY_URL }}
           GPU_CONFIG: "8-gpu-h200"
-          IS_H200: "1"
         run: |
           cd test
           python3 run_suite.py --hw cuda --suite nightly-8-gpu-common --nightly --timeout-per-file=18000 --continue-on-error --auto-partition-id=${{ matrix.partition }} --auto-partition-size=4
@@ -222,7 +221,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          IS_BLACKWELL=1 bash scripts/ci/cuda/ci_install_dependency.sh
+          bash scripts/ci/cuda/ci_install_dependency.sh
 
       - name: Run common 8-GPU model tests
         if: always()
@@ -233,7 +232,7 @@ jobs:
           GPU_CONFIG: "8-gpu-b200"
         run: |
           cd test
-          IS_BLACKWELL=1 python3 run_suite.py --hw cuda --suite nightly-8-gpu-common --nightly --timeout-per-file=12000 --continue-on-error --auto-partition-id=${{ matrix.partition }} --auto-partition-size=4
+          python3 run_suite.py --hw cuda --suite nightly-8-gpu-common --nightly --timeout-per-file=12000 --continue-on-error --auto-partition-id=${{ matrix.partition }} --auto-partition-size=4
 
       - name: Publish traces to storage repo
         if: always()
@@ -522,7 +521,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          IS_BLACKWELL=1 bash scripts/ci/cuda/ci_install_dependency.sh
+          bash scripts/ci/cuda/ci_install_dependency.sh
 
       - name: Run test
         timeout-minutes: 300
@@ -547,7 +546,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          IS_BLACKWELL=1 bash scripts/ci/cuda/ci_install_dependency.sh
+          bash scripts/ci/cuda/ci_install_dependency.sh
 
       - name: Run test
         timeout-minutes: 120
