@@ -33,12 +33,11 @@ mark_step_done() {
     local label=$1
     local now=${SECONDS}
     local step=$((now - _CI_MARK_PREV))
-    printf '[STEP DONE] %-50s step:%5ss total:%6ss %s\n' \
+    printf '\n[STEP DONE] %s,  step:%ss,  total:%ss,  date:%s\n' \
         "${label}" "${step}" "${now}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     _CI_MARK_PREV=${now}
 }
 
-echo "[ci_install_dependency] START $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 mark_step_done "Configuration"
 
 # ------------------------------------------------------------------------------
@@ -358,5 +357,3 @@ python3 -c "import torch; print(torch.version.cuda)"
 python3 -c "import cutlass; import cutlass.cute;"
 
 mark_step_done "Verify imports"
-
-printf '[ci_install_dependency] FINISH total=%ss %s\n' "${SECONDS}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
