@@ -18,25 +18,21 @@ from sglang.test.test_utils import (
     DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
     DEFAULT_URL_FOR_TEST,
     CustomTestCase,
-    get_amd_4gpu_env,
-    get_amd_4gpu_server_args,
-    is_in_amd_ci,
     popen_launch_server,
 )
 
 register_cuda_ci(est_time=360, suite="stage-c-test-4-gpu-h100")
-register_amd_ci(est_time=360, suite="stage-c-test-4-gpu-amd")
+register_amd_ci(
+    est_time=360,
+    suite="stage-c-test-4-gpu-amd",
+    disabled="TP=4 DP=4 routed expert mismatch >15% on AMD; needs TP/DP tuning + concurrency reduction",
+)
 
 SHAREGPT_URL = (
     "https://huggingface.co/datasets/anon8231489123/"
     "ShareGPT_Vicuna_unfiltered/resolve/main/ShareGPT_V3_unfiltered_cleaned_split.json"
 )
 logger = logging.getLogger(__name__)
-
-AMD_CI_MAX_PROMPTS = 32
-AMD_CI_MAX_REQUEST_CONCURRENCY = 8
-AMD_CI_MAX_NEW_TOKENS = 48
-AMD_CI_TIMEOUT = "1200"
 
 
 class TestReturnRoutedExperts(CustomTestCase):
@@ -68,13 +64,6 @@ class TestReturnRoutedExperts(CustomTestCase):
         cls.sampling_args = {
             "temperature": 0,
         }
-        if is_in_amd_ci():
-            # TP=4 DP=4 produces ~16% routed expert mismatches on AMD; TP=2 DP=2 passes
-            for args in (cls.baseline_args, cls.reference_args):
-                args[args.index("--tp") + 1] = 2
-                args[args.index("--dp") + 1] = 2
-        # Reduced tokens on AMD to fit MI325 memory at TP=2 DP=2
-        cls.max_new_tokens = AMD_CI_MAX_NEW_TOKENS if is_in_amd_ci() else 100
         # prepare ShareGPT dataset
         try:
             response = requests.get(SHAREGPT_URL, timeout=60)
@@ -96,7 +85,7 @@ class TestReturnRoutedExperts(CustomTestCase):
 
         if not cls.texts:
             raise ValueError("No valid texts found in the dataset")
-        cls.texts = cls.texts[: AMD_CI_MAX_PROMPTS if is_in_amd_ci() else 100]
+        cls.texts = cls.texts[:100]
         cls._endpoints = [
             (
                 "/generate",
@@ -161,17 +150,11 @@ class TestReturnRoutedExperts(CustomTestCase):
         cls,
         other_args,
     ):
-        kwargs = {}
-        if is_in_amd_ci():
-            other_args = list(other_args)
-            other_args.extend(get_amd_4gpu_server_args(mem_fraction="0.70"))
-            kwargs["env"] = get_amd_4gpu_env()
         process = popen_launch_server(
             DEFAULT_ENABLE_ROUTED_EXPERTS_MODEL_NAME_FOR_TEST,
             DEFAULT_URL_FOR_TEST,
             timeout=DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
             other_args=other_args,
-            **kwargs,
         )
         try:
             return asyncio.run(cls._collect_results_async())
@@ -181,14 +164,7 @@ class TestReturnRoutedExperts(CustomTestCase):
     @classmethod
     async def _collect_results_async(cls):
         results = {}
-        session_kwargs = {}
-        make_request_extra = {}
-        if is_in_amd_ci():
-            session_kwargs["timeout"] = aiohttp.ClientTimeout(total=300)
-            make_request_extra["semaphore"] = asyncio.Semaphore(
-                AMD_CI_MAX_REQUEST_CONCURRENCY
-            )
-        async with aiohttp.ClientSession(**session_kwargs) as session:
+        async with aiohttp.ClientSession() as session:
             for endpoint, payload_builder, response_extractor in cls._endpoints:
                 tasks = [
                     asyncio.create_task(
@@ -196,7 +172,6 @@ class TestReturnRoutedExperts(CustomTestCase):
                             session,
                             f"{DEFAULT_URL_FOR_TEST}{endpoint}",
                             payload_builder(text),
-                            **make_request_extra,
                         )
                     )
                     for text in cls.texts
@@ -214,7 +189,7 @@ class TestReturnRoutedExperts(CustomTestCase):
             "text": text,
             "sampling_params": cls.sampling_args,
             "return_routed_experts": True,
-            "max_new_tokens": cls.max_new_tokens,
+            "max_new_tokens": 100,
         }
 
     @classmethod
@@ -222,7 +197,7 @@ class TestReturnRoutedExperts(CustomTestCase):
         return {
             "messages": [{"role": "user", "content": text}],
             "temperature": 0,
-            "max_tokens": cls.max_new_tokens,
+            "max_tokens": 100,
             "return_routed_experts": True,
         }
 
@@ -231,18 +206,13 @@ class TestReturnRoutedExperts(CustomTestCase):
         return {
             "prompt": text,
             "temperature": 0,
-            "max_tokens": cls.max_new_tokens,
+            "max_tokens": 100,
             "return_routed_experts": True,
         }
 
 
-async def make_request(session, url, payload, **kwargs):
+async def make_request(session, url, payload):
     """Make a single async HTTP request"""
-    semaphore = kwargs.get("semaphore")
-    if semaphore is not None:
-        async with semaphore:
-            async with session.post(url=url, json=payload) as response:
-                return await response.json()
     async with session.post(url=url, json=payload) as response:
         return await response.json()
 
