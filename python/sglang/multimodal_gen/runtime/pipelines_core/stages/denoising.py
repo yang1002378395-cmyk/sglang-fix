@@ -1269,6 +1269,8 @@ class DenoisingStage(PipelineStage):
             # TODO: cache this?
             cond_noise = torch.empty_like(noise_pred)
         cond_noise = get_cfg_group().broadcast(cond_noise, src=0)
+
+        # qwen-image uses true_cfg_scale, match the per-token norm back to the conditional branch
         return self.server_args.pipeline_config.postprocess_cfg_noise(
             batch, noise_pred, cond_noise
         )
