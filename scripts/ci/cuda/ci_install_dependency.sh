@@ -9,11 +9,14 @@
 # - Python package site hygiene & install protoc
 # - Pip / uv toolchain & stale package cleanup
 # - Uninstall Flashinfer
-# - Install core package
+# - Install main package
+# - Install sglang-kernel
+# - Install sglang-router
 # - Download flashinfer artifacts
 # - Install extra dependency
 # - Fix other dependencies
-# - Verify imports & prepare runner
+# - Prepare runner
+# - Verify imports
 set -euxo pipefail
 
 # ------------------------------------------------------------------------------
@@ -26,17 +29,17 @@ OPTIONAL_DEPS="${1:-}"
 SECONDS=0
 _CI_MARK_PREV=${SECONDS}
 
-ci_install_mark_step() {
+mark_step_done() {
     local label=$1
     local now=${SECONDS}
     local step=$((now - _CI_MARK_PREV))
-    printf '[ci_install_dependency] %-50s +%5ss (step) %6ss (total) %s\n' \
-        "done: ${label}" "${step}" "${now}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+    printf '[STEP DONE] %-50s step:%5ss total:%6ss %s\n' \
+        "${label}" "${step}" "${now}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     _CI_MARK_PREV=${now}
 }
 
 echo "[ci_install_dependency] START $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-ci_install_mark_step "Configuration"
+mark_step_done "Configuration"
 
 # ------------------------------------------------------------------------------
 # Host / runner detection (CPU arch, Blackwell, USE_UV)
@@ -63,10 +66,10 @@ else
     echo "IS_BLACKWELL=${IS_BLACKWELL} (auto-detected via nvidia-smi)"
 fi
 
-# Whether use pip or uv to install dependencies
+# Whether to use pip or uv to install dependencies
 if [ "${USE_UV+set}" != set ]; then
     if [ "$IS_BLACKWELL" = "1" ]; then
-        # Our current b200 runners has some issues with uv, so we default to pip
+        # Our current b200 runners have some issues with uv, so we default to pip
         # It is a runner specific issue, not a GPU architecture issue.
         USE_UV=false
     else
@@ -76,7 +79,7 @@ fi
 case "$(printf '%s' "$USE_UV" | tr '[:upper:]' '[:lower:]')" in 1 | true | yes) USE_UV=1 ;; *) USE_UV=0 ;; esac
 echo "USE_UV=${USE_UV}"
 
-ci_install_mark_step "Host / runner detection"
+mark_step_done "Host / runner detection"
 
 # ------------------------------------------------------------------------------
 # Kill existing processes
@@ -85,7 +88,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "${SCRIPT_DIR}/../../killall_sglang.sh"
 echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}"
 
-ci_install_mark_step "Kill existing processes"
+mark_step_done "Kill existing processes"
 
 # ------------------------------------------------------------------------------
 # Install apt packages
@@ -97,8 +100,8 @@ ci_install_mark_step "Kill existing processes"
 apt-get update || true
 CI_APT_PACKAGES=(
     python3 python3-pip python3-venv python3-dev git libnuma-dev libssl-dev pkg-config
-    libibverbs-dev libibverbs1 ibverbs-providers ibverbs-utils ffmpeg
-    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
+    libibverbs-dev libibverbs1 ibverbs-providers ibverbs-utils
+    ffmpeg libavcodec-dev libavformat-dev libavutil-dev libswscale-dev
 )
 apt-get install -y --no-install-recommends "${CI_APT_PACKAGES[@]}" || {
     echo "Warning: apt-get install failed, checking if required packages are available..."
@@ -111,7 +114,7 @@ apt-get install -y --no-install-recommends "${CI_APT_PACKAGES[@]}" || {
     echo "All required packages are already installed, continuing..."
 }
 
-ci_install_mark_step "Install apt packages"
+mark_step_done "Install apt packages"
 
 # ------------------------------------------------------------------------------
 # Python package site hygiene & install protoc
@@ -135,7 +138,7 @@ fi
 # Install protoc
 bash "${SCRIPT_DIR}/../utils/install_protoc.sh"
 
-ci_install_mark_step "Python package site hygiene & install protoc"
+mark_step_done "Python package site hygiene & install protoc"
 
 # ------------------------------------------------------------------------------
 # Pip / uv toolchain & stale package cleanup
@@ -161,7 +164,7 @@ fi
 # Clean up existing installations
 $PIP_UNINSTALL_CMD sgl-kernel sglang-kernel sglang sgl-fa4 flash-attn-4 $PIP_UNINSTALL_SUFFIX || true
 
-ci_install_mark_step "Pip / uv toolchain & stale package cleanup"
+mark_step_done "Pip / uv toolchain & stale package cleanup"
 
 # ------------------------------------------------------------------------------
 # Uninstall Flashinfer
@@ -198,10 +201,10 @@ FLASHINFER_UNINSTALL="flashinfer-python"
 $PIP_UNINSTALL_CMD $FLASHINFER_UNINSTALL $PIP_UNINSTALL_SUFFIX || true
 $PIP_UNINSTALL_CMD opencv-python opencv-python-headless $PIP_UNINSTALL_SUFFIX || true
 
-ci_install_mark_step "Uninstall Flashinfer"
+mark_step_done "Uninstall Flashinfer"
 
 # ------------------------------------------------------------------------------
-# Install core package
+# Install main package
 # ------------------------------------------------------------------------------
 # Install the main package
 EXTRAS="dev"
@@ -211,6 +214,11 @@ fi
 echo "Installing python extras: [${EXTRAS}]"
 $PIP_CMD install -e "python[${EXTRAS}]" --extra-index-url https://download.pytorch.org/whl/${CU_VERSION} $PIP_INSTALL_SUFFIX
 
+mark_step_done "Install main package"
+
+# ------------------------------------------------------------------------------
+# Install sglang-kernel
+# ------------------------------------------------------------------------------
 # Install sgl-kernel
 SGL_KERNEL_VERSION_FROM_KERNEL=$(grep -Po '(?<=^version = ")[^"]*' sgl-kernel/pyproject.toml)
 SGL_KERNEL_VERSION_FROM_SRT=$(grep -Po -m1 '(?<=sglang-kernel==)[0-9A-Za-z\.\-]+' python/pyproject.toml)
@@ -247,13 +255,18 @@ else
     fi
 fi
 
+mark_step_done "Install sglang-kernel"
+
+# ------------------------------------------------------------------------------
+# Install sglang-router
+# ------------------------------------------------------------------------------
 # Install router for pd-disagg test
 $PIP_CMD install sglang-router $PIP_INSTALL_SUFFIX
 
 # Show current packages
 $PIP_CMD list
 
-ci_install_mark_step "Install core package"
+mark_step_done "Install sglang-router"
 
 # ------------------------------------------------------------------------------
 # Download flashinfer artifacts
@@ -268,7 +281,7 @@ UNINSTALL_JIT_CACHE="$UNINSTALL_JIT_CACHE" \
 # Download flashinfer cubins
 bash "${SCRIPT_DIR}/ci_download_flashinfer_cubin.sh"
 
-ci_install_mark_step "Download flashinfer artifacts"
+mark_step_done "Download flashinfer artifacts"
 
 # ------------------------------------------------------------------------------
 # Install extra dependency
@@ -289,7 +302,7 @@ if [ "$IS_BLACKWELL" != "1" ]; then
 fi
 $PIP_CMD uninstall xformers || true
 
-ci_install_mark_step "Install extra dependency"
+mark_step_done "Install extra dependency"
 
 # ------------------------------------------------------------------------------
 # Fix other dependencies
@@ -326,19 +339,24 @@ else
     $PIP_CMD install nvidia-cudnn-cu12==9.16.0.29 $PIP_INSTALL_SUFFIX
 fi
 
-ci_install_mark_step "Fix other dependencies"
+mark_step_done "Fix other dependencies"
 
 # ------------------------------------------------------------------------------
-# Verify imports & prepare runner
+# Prepare runner
+# ------------------------------------------------------------------------------
+# Prepare the CI runner (cleanup HuggingFace cache, etc.)
+bash "${SCRIPT_DIR}/prepare_runner.sh"
+
+mark_step_done "Prepare runner"
+
+# ------------------------------------------------------------------------------
+# Verify imports
 # ------------------------------------------------------------------------------
 # Show current packages
 $PIP_CMD list
 python3 -c "import torch; print(torch.version.cuda)"
 python3 -c "import cutlass; import cutlass.cute;"
 
-# Prepare the CI runner (cleanup HuggingFace cache, etc.)
-bash "${SCRIPT_DIR}/prepare_runner.sh"
-
-ci_install_mark_step "Verify imports & prepare runner"
+mark_step_done "Verify imports"
 
 printf '[ci_install_dependency] FINISH total=%ss %s\n' "${SECONDS}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
