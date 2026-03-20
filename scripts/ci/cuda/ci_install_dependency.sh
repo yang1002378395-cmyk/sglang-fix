@@ -33,7 +33,7 @@ mark_step_done() {
     local label=$1
     local now=${SECONDS}
     local step=$((now - _CI_MARK_PREV))
-    printf '\n[STEP DONE] %s,  step:%ss,  total:%ss,  date:%s\n' \
+    printf '\n[STEP DONE] %s,  step: %ss,  total: %ss,  date: %s\n' \
         "${label}" "${step}" "${now}" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     _CI_MARK_PREV=${now}
 }
