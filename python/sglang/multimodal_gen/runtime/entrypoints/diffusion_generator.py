@@ -40,7 +40,6 @@ from sglang.multimodal_gen.runtime.utils.logging_utils import (
     log_batch_completion,
     log_generation_timer,
 )
-from sglang.multimodal_gen.runtime.utils.prompt_resolution import resolve_prompts
 
 logger = init_logger(__name__)
 
