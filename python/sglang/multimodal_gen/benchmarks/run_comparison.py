@@ -42,7 +42,7 @@ INSTALL_SCRIPT = (
 )
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 30000
-HEALTH_TIMEOUT = 1200  # seconds
+HEALTH_TIMEOUT = 1800  # seconds (30 min for large models + model download)
 REQUEST_TIMEOUT = 1200  # seconds
 GPU_CLEAR_WAIT = 15  # seconds between framework runs
 
@@ -352,7 +352,7 @@ def send_image_request_sglang(
 def send_video_request_sglang(
     base_url: str, case: dict, perf_dump_path: str | None = None
 ) -> float:
-    """Send a single T2V request via SGLang's /v1/videos/generations (async)."""
+    """Send a single T2V request via SGLang's /v1/videos (async)."""
     payload = _build_sglang_payload(case)
     if perf_dump_path:
         payload["perf_dump_path"] = perf_dump_path
@@ -361,7 +361,7 @@ def send_video_request_sglang(
 
     # Submit job
     resp = requests.post(
-        f"{base_url}/v1/videos/generations",
+        f"{base_url}/v1/videos",
         json=payload,
         timeout=REQUEST_TIMEOUT,
     )
@@ -425,7 +425,7 @@ def send_image_conditioned_request_sglang(
     if task in ("image-edit", "image-to-image"):
         endpoint = "/v1/images/edits"
     elif task in ("image-to-video", "text-image-to-video"):
-        endpoint = "/v1/videos/generations"
+        endpoint = "/v1/videos"
     else:
         endpoint = "/v1/images/generations"
 

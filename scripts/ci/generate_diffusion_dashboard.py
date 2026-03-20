@@ -185,8 +185,8 @@ def generate_dashboard(
     lines.append("## Cross-Framework Performance Comparison\n")
 
     # Dynamic header
-    header = "| Model | Task |"
-    sep = "|-------|------|"
+    header = "| Model |"
+    sep = "|-------|"
     for fw in all_frameworks:
         header += f" {fw} (s) |"
         sep += "---------|"
@@ -207,7 +207,7 @@ def generate_dashboard(
         case_fws = current_cases.get(cid, {})
         sg_lat = case_fws.get("sglang")
 
-        row = f"| {r['model'].split('/')[-1]} | {r['task']} |"
+        row = f"| {r['model'].split('/')[-1]} |"
         # Latency columns — bold the fastest
         lats = {fw: case_fws.get(fw) for fw in all_frameworks}
         valid_lats = [v for v in lats.values() if v is not None]
@@ -288,14 +288,20 @@ def generate_dashboard(
     if history:
         all_runs = list(reversed([current] + history))  # chronological order
 
+        # Build x-axis labels: "Mar 17 (abc1234)"
+        def _chart_label(run: dict) -> str:
+            d = _short_date(run.get("timestamp", ""))
+            s = _short_sha(run.get("commit_sha", ""))
+            return f"{d} ({s})"
+
         # Chart: SGLang latency trend per case
         for cid in case_ids:
-            dates = []
+            labels = []
             sg_vals = []
             vl_vals = []
             for run in all_runs:
                 run_cases = _extract_case_results(run)
-                dates.append(_short_date(run.get("timestamp", "")))
+                labels.append(_chart_label(run))
                 sg = run_cases.get(cid, {}).get("sglang")
                 vl = run_cases.get(cid, {}).get("vllm-omni")
                 sg_vals.append(sg if sg else 0)
@@ -307,7 +313,7 @@ def generate_dashboard(
             lines.append("```mermaid")
             lines.append("xychart-beta")
             lines.append(f'  title "Latency Trend — {cid}"')
-            lines.append("  x-axis [{}]".format(", ".join(f'"{d}"' for d in dates)))
+            lines.append("  x-axis [{}]".format(", ".join(f'"{l}"' for l in labels)))
             all_vals = sg_vals + (vl_vals if has_vl_data else [])
             max_val = max(all_vals) * 1.2 if all_vals else 100
             lines.append(f'  y-axis "Latency (s)" 0 --> {max_val:.0f}')
@@ -326,9 +332,9 @@ def generate_dashboard(
             lines.append("```mermaid")
             lines.append("xychart-beta")
             lines.append('  title "SGLang Speedup Over vLLM-Omni"')
-            dates = [_short_date(run.get("timestamp", "")) for run in all_runs]
+            chart_labels = [_chart_label(run) for run in all_runs]
             lines.append(
-                "  x-axis [{}]".format(", ".join(f'"{d}"' for d in dates))
+                "  x-axis [{}]".format(", ".join(f'"{l}"' for l in chart_labels))
             )
             lines.append('  y-axis "Speedup (x)" 0 --> 3')
 
