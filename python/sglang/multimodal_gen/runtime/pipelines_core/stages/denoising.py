@@ -719,19 +719,9 @@ class DenoisingStage(PipelineStage):
             and hasattr(batch, "noise_pred")
             and batch.noise_pred is not None
         ):
-            batch.noise_pred = server_args.pipeline_config.gather_latents_for_sp(
-                batch.noise_pred
+            batch.noise_pred = server_args.pipeline_config.gather_noise_pred_for_sp(
+                batch, batch.noise_pred
             )
-            if batch.noise_pred.dim() == 4:
-                batch.noise_pred = sequence_model_parallel_all_gather(
-                    batch.noise_pred.contiguous(), dim=2
-                )
-                if getattr(batch, "_zimage_sp_swap_hw", False):
-                    batch.noise_pred = batch.noise_pred.transpose(2, 3).contiguous()
-            if hasattr(batch, "raw_latent_shape") and batch.noise_pred.dim() == 3:
-                orig_s = batch.raw_latent_shape[1]
-                if batch.noise_pred.shape[1] > orig_s:
-                    batch.noise_pred = batch.noise_pred[:, :orig_s, :]
 
         if trajectory_tensor is not None and trajectory_timesteps_tensor is not None:
             batch.trajectory_timesteps = trajectory_timesteps_tensor.cpu()

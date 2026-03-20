@@ -364,6 +364,15 @@ class PipelineConfig:
         latents = sequence_model_parallel_all_gather(latents, dim=2)
         return latents
 
+    def gather_noise_pred_for_sp(self, batch, noise_pred):
+        noise_pred = self.gather_latents_for_sp(noise_pred)
+        raw_latent_shape = getattr(batch, "raw_latent_shape", None)
+        if raw_latent_shape is not None and noise_pred.dim() == 3:
+            orig_s = raw_latent_shape[1]
+            if noise_pred.shape[1] > orig_s:
+                noise_pred = noise_pred[:, :orig_s, :]
+        return noise_pred
+
     def preprocess_vae_image(self, batch, vae_image_processor):
         pass
 

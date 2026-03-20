@@ -182,6 +182,19 @@ class ZImagePipelineConfig(ImagePipelineConfig):
             return latents
         return sequence_model_parallel_all_gather(latents, dim=3)
 
+    def gather_noise_pred_for_sp(self, batch, noise_pred):
+        # Z-Image shards 5D latents on the effective-H axis, but ComfyUI noise_pred is 4D [B, C, H_local, W].
+        noise_pred = self.gather_latents_for_sp(noise_pred)
+        if noise_pred.dim() == 4:
+            # reconstruct the full spatial tensor
+            noise_pred = sequence_model_parallel_all_gather(
+                noise_pred.contiguous(), dim=2
+            )
+            # restore the original H/W orientation
+            if getattr(batch, "_zimage_sp_swap_hw", False):
+                noise_pred = noise_pred.transpose(2, 3).contiguous()
+        return noise_pred
+
     def post_denoising_loop(self, latents, batch):
         # Restore swapped H/W and crop padded spatial dims before final reshape.
         if latents.dim() == 5 and getattr(batch, "_zimage_sp_swap_hw", False):
