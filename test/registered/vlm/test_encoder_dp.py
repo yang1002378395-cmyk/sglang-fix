@@ -14,17 +14,13 @@ from sglang.test.test_utils import (
     DEFAULT_TIMEOUT_FOR_SERVER_LAUNCH,
     DEFAULT_URL_FOR_TEST,
     CustomTestCase,
+    is_in_amd_ci,
     is_in_ci,
     popen_launch_server,
 )
 
 register_cuda_ci(est_time=500, suite="nightly-4-gpu", nightly=True)
-register_amd_ci(
-    est_time=500,
-    suite="nightly-amd-4-gpu",
-    nightly=True,
-    disabled="CUDA IPC transport not supported on ROCm",
-)
+register_amd_ci(est_time=500, suite="nightly-amd-4-gpu", nightly=True)
 
 MODELS = [
     SimpleNamespace(model="Qwen/Qwen2.5-VL-72B-Instruct", mmmu_accuracy=0.55),
@@ -133,8 +129,8 @@ class TestVLMEncoderDP(CustomTestCase):
             process_env = os.environ.copy()
             if custom_env:
                 process_env.update(custom_env)
-            # if test vlm with cuda_ipc feature, open this env_var
-            process_env["SGLANG_USE_CUDA_IPC_TRANSPORT"] = "1"
+            if not is_in_amd_ci():
+                process_env["SGLANG_USE_CUDA_IPC_TRANSPORT"] = "1"
 
             # Prepare stdout/stderr redirection if needed
             stdout_file = None
