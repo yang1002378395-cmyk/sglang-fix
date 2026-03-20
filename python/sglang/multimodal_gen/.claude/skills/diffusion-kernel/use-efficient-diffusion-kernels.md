@@ -114,4 +114,4 @@ This skill focuses on SGLang Diffusion (`sglang.multimodal_gen`) kernel fusion p
 - Keep CuTe compile cache keys aligned to `(dtype, ndim, D)`.
 - Avoid implicit broadcasts that force hidden `contiguous()` copies.
 - Preserve NPU and ROCm fallback paths.
-- **Always verify with ncu** (`ncu --set full`) that the kernel achieves adequate memory bandwidth utilization (>70% of peak for bandwidth-bound ops) and occupancy (>50%). See `diffusion-benchmark-and-profile.md` Step 3.5 for the ncu workflow.
+- **Always verify with ncu** (`ncu --set full`) and compare against both the unfused baseline and the hardware roofline. Do not rely on a single universal bandwidth/occupancy threshold; the right target depends on whether the kernel is memory-bound, compute-bound, or launch-limited. See `diffusion-benchmark-and-profile.md` Step 3.5 for the ncu workflow.
