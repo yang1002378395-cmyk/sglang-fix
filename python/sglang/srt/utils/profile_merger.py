@@ -84,10 +84,8 @@ class ProfileMerger:
 
     def _discover_trace_files(self) -> List[str]:
         """Discover trace files matching profile_id (supports TP/DP/PP/EP formats)."""
-        if self.profile_prefix:
-            patterns = [f"{self.profile_prefix}-{self.profile_id}*.trace.json.gz"]
-        else:
-            patterns = [f"{self.profile_id}*.trace.json.gz"]
+        prefix_part = f"{self.profile_prefix}-" if self.profile_prefix else ""
+        patterns = [f"{prefix_part}{self.profile_id}*.trace.json.gz"]
 
         trace_files = []
         for pattern in patterns:
