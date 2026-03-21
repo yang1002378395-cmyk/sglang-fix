@@ -67,9 +67,8 @@ class HiSparseCoordinator:
         self.req_to_device_buffer = torch.zeros(
             (max_num_reqs, self.padded_buffer_size), dtype=torch.int64, device=device
         )
-        # todo: move this to CPU to reduce fine grained query overhead
         self.req_device_buffer_size = torch.zeros(
-            max_num_reqs, dtype=torch.int64, device=self.device
+            max_num_reqs, dtype=torch.int64, device="cpu"
         )
         self.req_to_host_pool = torch.full(
             (max_num_reqs, max_context_len),
@@ -115,6 +114,10 @@ class HiSparseCoordinator:
         # Scalar tensor: number of real (non-padded) requests in the batch.
         # Updated before each graph replay so padded blocks early-return.
         self.num_real_reqs = torch.zeros(1, dtype=torch.int32, device=device)
+
+        # CPU flag: True means "skip backup on the next decode step" because
+        # staging already backed up all prefill tokens.  Cleared after one step.
+        self._skip_first_backup = [False] * max_num_reqs
 
     def set_decode_producer_stream(self, stream) -> None:
         self.decode_producer_stream = stream
@@ -222,6 +225,7 @@ class HiSparseCoordinator:
             # prepare device buffer and update req
             self.alloc_device_buffer(req)
             req.staging = False
+            self._skip_first_backup[req.req_pool_idx] = True
             finish_count -= 1
             ready_reqs.append(req)
         return ready_reqs
@@ -230,64 +234,73 @@ class HiSparseCoordinator:
         self,
         seq_lens: torch.Tensor,
         req_pool_indices: torch.Tensor,
+        seq_lens_cpu: torch.Tensor,
+        req_pool_indices_cpu: torch.Tensor,
     ) -> torch.Tensor:
         """Grow device buffers for requests whose sequence length exceeds current capacity."""
-        current_caps = self.req_device_buffer_size[req_pool_indices]
-        short_reqs = seq_lens <= self.device_buffer_size
-        needs_grow = short_reqs & (seq_lens > current_caps)
+        current_caps = self.req_device_buffer_size[req_pool_indices_cpu]
+        short_reqs_cpu = seq_lens_cpu <= self.device_buffer_size
+        needs_grow_cpu = short_reqs_cpu & (seq_lens_cpu > current_caps)
 
-        if torch.any(needs_grow):
+        if torch.any(needs_grow_cpu):
             page_size = self.mem_pool_device.page_size
-            grow_indices = torch.where(needs_grow)[0]
+            grow_indices = torch.where(needs_grow_cpu)[0]
 
-            # todo: expensive to have all the fragmented access
-            for i in grow_indices:
-                req_idx = int(req_pool_indices[i].item())
-                current_cap = int(current_caps[i].item())
-                seq_len = int(seq_lens[i].item())
+            # Compute all grow sizes on CPU, then do a single bulk allocation
+            req_idxs = []
+            old_caps = []
+            new_caps = []
+            grow_sizes = []
+            total_grow = 0
+            for i in grow_indices.tolist():
+                req_idx = int(req_pool_indices_cpu[i])
+                current_cap = int(current_caps[i])
+                seq_len = int(seq_lens_cpu[i])
 
                 new_cap = min(
                     ((seq_len + page_size - 1) // page_size) * page_size,
                     self.device_buffer_size,
                 )
-                # Include reserved page when reaching device_buffer_size
                 if new_cap == self.device_buffer_size:
                     new_cap = self.padded_buffer_size
                 grow_size = new_cap - current_cap
                 if grow_size <= 0:
                     continue
+                req_idxs.append(req_idx)
+                old_caps.append(current_cap)
+                new_caps.append(new_cap)
+                grow_sizes.append(grow_size)
+                total_grow += grow_size
 
-                new_hisparse_indices = (
+            if total_grow > 0:
+                all_new_indices = (
                     self.token_to_kv_pool_allocator.hisparse_attn_allocator.alloc(
-                        grow_size
+                        total_grow
                     )
                 )
-                if new_hisparse_indices is None:
+                if all_new_indices is None:
                     logger.error(
-                        "HiSparse: _grow_device_buffers failed for req pool idx %d "
-                        "(current_cap=%d, new_cap=%d, grow_size=%d)",
-                        req_idx,
-                        current_cap,
-                        new_cap,
-                        grow_size,
+                        "HiSparse: _grow_device_buffers bulk alloc failed "
+                        "(total_grow=%d)",
+                        total_grow,
                     )
                     raise RuntimeError(
-                        f"HiSparse _grow_device_buffers failed (grow_size={grow_size})"
+                        f"HiSparse _grow_device_buffers failed (total_grow={total_grow})"
                     )
 
-                self.req_to_device_buffer[req_idx, current_cap:new_cap] = (
-                    new_hisparse_indices
-                )
-                self.req_device_buffer_token_locs[:, req_idx, current_cap:new_cap] = (
-                    new_hisparse_indices
-                )
-                self.req_device_buffer_size[req_idx] = new_cap
+                offset = 0
+                for req_idx, current_cap, new_cap, grow_size in zip(
+                    req_idxs, old_caps, new_caps, grow_sizes
+                ):
+                    chunk = all_new_indices[offset : offset + grow_size]
+                    offset += grow_size
+                    self.req_to_device_buffer[req_idx, current_cap:new_cap] = chunk
+                    self.req_device_buffer_token_locs[
+                        :, req_idx, current_cap:new_cap
+                    ] = chunk
+                    self.req_device_buffer_size[req_idx] = new_cap
 
-        reserved_positions = torch.where(
-            short_reqs,
-            seq_lens - 1,
-            torch.full_like(seq_lens, self.device_buffer_size),
-        )
+        reserved_positions = (seq_lens - 1).clamp(max=self.device_buffer_size)
         return self.req_to_device_buffer[req_pool_indices, reserved_positions]
 
     def map_last_loc_to_buffer(
@@ -295,10 +308,17 @@ class HiSparseCoordinator:
         seq_lens: torch.Tensor,
         out_cache_loc: torch.Tensor,
         req_pool_indices: torch.Tensor,
+        seq_lens_cpu: torch.Tensor,
     ) -> None:
-        self._eager_backup_previous_token(seq_lens, req_pool_indices)
+        req_pool_indices_cpu = req_pool_indices.cpu()
+
+        self._eager_backup_previous_token(
+            seq_lens, req_pool_indices, seq_lens_cpu, req_pool_indices_cpu
+        )
         # Grow device buffers if needed and resolve the latest-token slot.
-        reserved_buffer_loc = self._grow_device_buffers(seq_lens, req_pool_indices)
+        reserved_buffer_loc = self._grow_device_buffers(
+            seq_lens, req_pool_indices, seq_lens_cpu, req_pool_indices_cpu
+        )
 
         self.req_device_buffer_token_locs[
             :, req_pool_indices, self.device_buffer_size
@@ -313,27 +333,44 @@ class HiSparseCoordinator:
         self,
         seq_lens: torch.Tensor,
         req_pool_indices: torch.Tensor,
+        seq_lens_cpu: torch.Tensor,
+        req_pool_indices_cpu: torch.Tensor,
     ) -> None:
-        """Back up the previous decode token from the reserved device buffer slot."""
+        """Back up the previous decode token to host memory.
+
+        Every decode step, the token written in the *previous* step must be
+        backed up to host so the swap-in kernel can later recover it.
+
+        The only exception is the first decode step right after staging: all
+        prefill tokens were already backed up during staging, so there is nothing new to save yet.
+        """
         if self.decode_producer_stream is not None:
             device_module.current_stream().wait_stream(self.decode_producer_stream)
 
-        actual_token_pos = seq_lens - 2
-        last_token_loc = torch.minimum(
-            seq_lens - 2,
-            torch.full_like(seq_lens, self.device_buffer_size),
-        )
+        # Build the list of batch positions that need a host backup.
+        # Skip the first decode step after staging (prefill already backed up).
+        backup_indices = []
+        for i in range(len(seq_lens_cpu)):
+            req_idx = int(req_pool_indices_cpu[i])
+            if self._skip_first_backup[req_idx]:
+                self._skip_first_backup[req_idx] = False
+                continue
+            backup_indices.append(i)
 
-        # Skip positions already backed up (first decode after prefill)
-        needs_backup = self.req_to_host_pool[req_pool_indices, actual_token_pos] < 0
-        if not torch.any(needs_backup):
+        if not backup_indices:
             return
 
-        backup_req_indices = req_pool_indices[needs_backup]
-        backup_positions = actual_token_pos[needs_backup]
-        device_locs = self.req_to_device_buffer[
-            backup_req_indices, last_token_loc[needs_backup]
-        ]
+        backup_indices_gpu = torch.tensor(
+            backup_indices, dtype=torch.int64, device=self.device
+        )
+        # The previous token's position and its device buffer slot:
+        #  - short seq: slot = seq_len - 2  (within the regular buffer)
+        #  - long seq:  slot = device_buffer_size  (the reserved slot)
+        actual_token_pos = seq_lens[backup_indices_gpu] - 2
+        buffer_slot = actual_token_pos.clamp(max=self.device_buffer_size)
+
+        backup_req_indices = req_pool_indices[backup_indices_gpu]
+        device_locs = self.req_to_device_buffer[backup_req_indices, buffer_slot]
 
         host_locs = self.mem_pool_host.alloc(len(device_locs))
         if host_locs is None:
@@ -345,10 +382,8 @@ class HiSparseCoordinator:
                 f"HiSparse host mem pool alloc failed for {len(device_locs)} decode backup tokens"
             )
         host_locs = host_locs.to(device=self.device)
-        self.req_to_host_pool[backup_req_indices, backup_positions] = host_locs
+        self.req_to_host_pool[backup_req_indices, actual_token_pos] = host_locs
 
-        # Runs on the default stream; forward_stream.wait_stream(default_stream)
-        # ensures the backup completes before the forward overwrites the slot.
         self.mem_pool_host.backup_from_device_all_layer(
             self.mem_pool_device,
             host_locs,
@@ -361,21 +396,13 @@ class HiSparseCoordinator:
         req_pool_indices: torch.Tensor,
         seq_lens: torch.Tensor,
     ) -> torch.Tensor:
-        # a dummy selection for testing
-        num_reqs = req_pool_indices.size(0)
-        top_k_indices = torch.full(
-            (num_reqs, self.top_k), -1, dtype=torch.int32, device=self.device
+        top_k_indices = self.req_to_device_buffer[req_pool_indices, : self.top_k].to(
+            torch.int32
         )
-        for i in range(num_reqs):
-            top_n = min(
-                seq_lens[i],
-                self.top_k,
-            )
-            if top_n == 0:
-                continue
-            top_k_indices[i, :top_n] = self.req_to_device_buffer[req_pool_indices[i]][
-                :top_n
-            ]
+        topk_col_indices = torch.arange(self.top_k, device=self.device).unsqueeze(0)
+        # Mask out positions beyond each request's seq_len
+        mask = topk_col_indices >= seq_lens.unsqueeze(1)
+        top_k_indices[mask] = -1
         return top_k_indices
 
     def naive_load_topk(
@@ -386,6 +413,10 @@ class HiSparseCoordinator:
         layer_id: int,
     ) -> torch.Tensor:
         """Load top-k selected tokens into device memory and return their device indices.
+
+        This is a naive per-request loop implementation for debugging/validation.
+        Production code uses swap_in_selected_pages (JIT CUDA kernel) instead.
+
         Args:
             req_pool_indices: Pool indices for each request.  Shape: (num_reqs,)
             seq_lens: Sequence lengths for each request.  Shape: (num_reqs,)
@@ -409,7 +440,6 @@ class HiSparseCoordinator:
             req_idx = int(req_pool_indices[i].item())
             selected_tokens = top_k_tokens[i, :top_n].to(dtype=torch.int64)
 
-            # Validate token positions
             assert torch.all(
                 selected_tokens >= 0
             ), f"Req {req_idx}: selected tokens contain negative positions"
@@ -419,12 +449,8 @@ class HiSparseCoordinator:
             )
 
             if seq_len <= self.device_buffer_size:
-                # Short sequence: all tokens reside in the device buffer,
-                # directly indexed by token position.
                 device_indices = self.req_to_device_buffer[req_idx, selected_tokens]
             else:
-                # Long sequence: latest token uses reserved slot; all others
-                # are loaded from host into reusable device buffer slots.
                 device_indices = torch.empty(
                     top_n, dtype=torch.int64, device=self.device
                 )
@@ -432,12 +458,10 @@ class HiSparseCoordinator:
                 is_latest_token = selected_tokens == (seq_len - 1)
                 needs_host_load = ~is_latest_token
 
-                # Assign the reserved buffer slot for the latest token
                 device_indices[is_latest_token] = self.req_to_device_buffer[
                     req_idx, self.device_buffer_size
                 ]
 
-                # Load all other tokens from host
                 num_to_load = int(needs_host_load.sum().item())
                 if num_to_load > 0:
                     tokens_to_load = selected_tokens[needs_host_load]
@@ -451,7 +475,6 @@ class HiSparseCoordinator:
                             f"missing host backup at token positions {bad_positions}"
                         )
 
-                    # Reuse the first num_to_load slots in the device buffer
                     buffer_locs = self.req_to_device_buffer[req_idx, :num_to_load]
                     device_indices[needs_host_load] = buffer_locs
 
@@ -486,6 +509,7 @@ class HiSparseCoordinator:
         if host_indices.numel() > 0:
             self.mem_pool_host.free(host_indices)
         self.req_to_host_pool[req.req_pool_idx, :] = -1
+        self._skip_first_backup[req.req_pool_idx] = False
         req.staging = False
 
     def retract_req(self, req: Req) -> None:
@@ -500,7 +524,7 @@ class HiSparseCoordinator:
             device_module.current_stream().wait_stream(self.decode_producer_stream)
 
         # release memory — only free actually-allocated buffer indices
-        current_cap = int(self.req_device_buffer_size[req.req_pool_idx].item())
+        current_cap = int(self.req_device_buffer_size[req.req_pool_idx])
         buffer_indices = self.req_to_device_buffer[req.req_pool_idx, :current_cap]
         self.token_to_kv_pool_allocator.free_hisparse_indices(buffer_indices)
 
@@ -522,6 +546,7 @@ class HiSparseCoordinator:
         self.req_device_buffer_size[req.req_pool_idx] = 0
         self.req_to_host_pool[req.req_pool_idx, :] = -1
         self.lru_slots[:, req.req_pool_idx, :].copy_(self._lru_init)
+        self._skip_first_backup[req.req_pool_idx] = False
 
     def swap_in_selected_pages(
         self,

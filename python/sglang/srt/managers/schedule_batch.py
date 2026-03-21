@@ -2024,7 +2024,10 @@ class ScheduleBatch(ScheduleBatchDisaggregationDecodeMixin):
 
         if self.hisparse_coordinator is not None:
             self.hisparse_coordinator.map_last_loc_to_buffer(
-                self.seq_lens, self.out_cache_loc, self.req_pool_indices
+                self.seq_lens,
+                self.out_cache_loc,
+                self.req_pool_indices,
+                self.seq_lens_cpu,
             )
 
         if get_global_server_args().enable_mamba_extra_buffer():
