@@ -794,6 +794,13 @@ class TokenizerManager(TokenizerCommunicatorMixin, TokenizerManagerMultiItemMixi
         input_token_num = len(input_ids) if input_ids is not None else 0
         input_token_num += self.num_reserved_tokens
 
+        # Get max_new_tokens early to reserve space for generation
+        max_new_tokens = obj.sampling_params.get("max_new_tokens")
+        # Reserve space for generation if max_new_tokens is set, otherwise use default
+        reserved_for_generation = (
+            min(max_new_tokens, 512) if max_new_tokens is not None else 512
+        )
+
         # Validate input length
         if input_token_num >= self.context_len:
             if self.server_args.allow_auto_truncate:
@@ -802,7 +809,9 @@ class TokenizerManager(TokenizerCommunicatorMixin, TokenizerManagerMultiItemMixi
                     f"model's context length ({self.context_len} tokens). "
                     "Truncating the input."
                 )
-                del input_ids[_max_req_len:]
+                # Reserve space for generation to avoid zero output tokens
+                truncate_len = max(1, _max_req_len - reserved_for_generation)
+                del input_ids[truncate_len:]
                 input_token_num = len(input_ids)
             else:
                 raise ValueError(
