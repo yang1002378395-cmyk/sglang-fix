@@ -2160,7 +2160,12 @@ class TokenizerManager(TokenizerCommunicatorMixin, TokenizerManagerMultiItemMixi
     def _handle_abort_req(self, recv_obj: AbortReq):
         if is_health_check_generate_req(recv_obj):
             return
-        state = self.rid_to_state[recv_obj.rid]
+        state = self.rid_to_state.get(recv_obj.rid, None)
+        if state is None:
+            logger.warning(
+                f"Received abort for {recv_obj.rid} but the state was already deleted in TokenizerManager."
+            )
+            return
         state.finished = True
         state.time_stats.set_finished_time()
 
