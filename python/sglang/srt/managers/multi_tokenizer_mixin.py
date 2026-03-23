@@ -414,6 +414,35 @@ class TokenizerWorker(TokenizerManager):
             self.send_to_scheduler, 2
         )
 
+        # Global pause state shared across all workers
+        self.global_pause_shm_name = "sglang_global_pause_state"
+        try:
+            self.global_pause_shm = shared_memory.SharedMemory(
+                name=self.global_pause_shm_name, create=True, size=1
+            )
+            self.global_pause_shm.buf[0] = 0  # 0 = not paused
+        except FileExistsError:
+            self.global_pause_shm = shared_memory.SharedMemory(
+                name=self.global_pause_shm_name, create=False, size=1
+            )
+
+        # Override is_pause to use shared memory
+        object.__setattr__(self, "is_pause", self._is_pause_shared)
+
+    def _is_pause_shared(self):
+        """Read global pause state from shared memory."""
+        return self.global_pause_shm.buf[0] == 1
+
+    def pause_generation(self, obj):
+        """Pause generation across all workers."""
+        self.global_pause_shm.buf[0] = 1  # Set global pause flag
+        super().pause_generation(obj)
+
+    def continue_generation(self, obj):
+        """Continue generation across all workers."""
+        self.global_pause_shm.buf[0] = 0  # Clear global pause flag
+        super().continue_generation(obj)
+
     def _attach_multi_http_worker_info(self, req: Union[BaseReq, BaseBatchReq]):
 
         if isinstance(req, BaseReq):
