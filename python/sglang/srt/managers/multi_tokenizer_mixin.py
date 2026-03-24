@@ -30,11 +30,10 @@ from functools import partialmethod
 from multiprocessing import shared_memory
 from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
+import fastapi
 import setproctitle
 import zmq
 import zmq.asyncio
-
-import fastapi
 
 from sglang.srt.disaggregation.utils import DisaggregationMode, TransferBackend
 from sglang.srt.managers.disagg_service import start_disagg_service
@@ -450,7 +449,7 @@ class TokenizerWorker(TokenizerManager):
         """Check if any worker has triggered a global pause."""
         if self._PAUSE_SHM is not None:
             return self._PAUSE_SHM.buf[0] == 1
-        return self.is_pause   # Fallback to local state
+        return self.is_pause  # Fallback to local state
 
     def _set_global_pause(self, paused: bool):
         """Set global pause state in shared memory."""
