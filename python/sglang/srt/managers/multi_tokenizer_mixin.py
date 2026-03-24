@@ -20,6 +20,7 @@ This file uses multiple processes to handle requests and tokenization, reducing 
 """
 
 import asyncio
+import atexit
 import logging
 import multiprocessing as multiprocessing
 import os
@@ -433,12 +434,14 @@ class TokenizerWorker(TokenizerManager):
         parent_pid = get_main_process_id()
         shm_name = f"sglang_pause_state_{parent_pid}"
 
+        self._is_shm_creator = False
         try:
             # Try to create new shared memory (first worker)
             self._PAUSE_SHM = shared_memory.SharedMemory(
                 create=True, size=1, name=shm_name
             )
             self._PAUSE_SHM.buf[0] = 0  # Initialize to not paused
+            self._is_shm_creator = True
             logger.info(
                 f"Worker {self.worker_id} created shared pause state: {shm_name}"
             )
@@ -450,6 +453,24 @@ class TokenizerWorker(TokenizerManager):
             )
 
         TokenizerWorker._PAUSE_SHM_NAME = shm_name
+
+        # Register cleanup on exit
+        atexit.register(self._cleanup_shared_pause_state)
+
+    def _cleanup_shared_pause_state(self):
+        """Clean up shared memory on exit."""
+        if self._PAUSE_SHM is not None:
+            try:
+                self._PAUSE_SHM.close()
+                # Only creator should unlink to avoid race conditions
+                if self._is_shm_creator:
+                    self._PAUSE_SHM.unlink()
+                    logger.info(
+                        f"Worker {self.worker_id} unlinked shared pause state: "
+                        f"{TokenizerWorker._PAUSE_SHM_NAME}"
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to cleanup shared pause state: {e}")
 
     def _is_globally_paused(self) -> bool:
         """Check if generation is paused globally (across all workers)."""
@@ -470,10 +491,11 @@ class TokenizerWorker(TokenizerManager):
             if obj.mode != "abort":
                 await self.send_to_scheduler.send_pyobj(obj)
             else:
+                # Abort all requests once before waiting for lock release
+                self.abort_request(abort_all=True)
                 # we are using the model_update_lock to check if there is still on-going requests.
                 while True:
                     # TODO: maybe make it async instead of fire-and-forget
-                    self.abort_request(abort_all=True)
                     is_locked = await self.model_update_lock.is_locked()
                     if not is_locked:
                         break
