@@ -434,11 +434,15 @@ class TokenizerWorker(TokenizerManager):
                 create=True, size=1, name=shm_name
             )
             self._PAUSE_SHM.buf[0] = 0  # Initialize to not paused
-            logger.info(f"Worker {self.worker_id} created shared pause state: {shm_name}")
+            logger.info(
+                f"Worker {self.worker_id} created shared pause state: {shm_name}"
+            )
         except FileExistsError:
             # Shared memory already exists (subsequent workers)
             self._PAUSE_SHM = shared_memory.SharedMemory(name=shm_name)
-            logger.info(f"Worker {self.worker_id} attached to shared pause state: {shm_name}")
+            logger.info(
+                f"Worker {self.worker_id} attached to shared pause state: {shm_name}"
+            )
 
         TokenizerWorker._PAUSE_SHM_NAME = shm_name
 
@@ -490,8 +494,8 @@ class TokenizerWorker(TokenizerManager):
         request: Optional["fastapi.Request"] = None,
     ):
         """Override generate_request to use global pause state."""
-        from sglang.srt.managers.io_struct import GenerateReqInput, EmbeddingReqInput
-        import fastapi
+
+        from sglang.srt.managers.io_struct import GenerateReqInput
 
         self.auto_create_handle_loop()
 
