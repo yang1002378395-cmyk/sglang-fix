@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any, Dict, Union, Optional
 import setproctitle
 import zmq
 import zmq.asyncio
+import fastapi
 
 from sglang.srt.disaggregation.utils import DisaggregationMode, TransferBackend
 from sglang.srt.managers.disagg_service import start_disagg_service
@@ -44,6 +45,8 @@ from sglang.srt.managers.io_struct import (
     BatchStrOutput,
     BatchTokenIDOutput,
     ContinueGenerationReqInput,
+    EmbeddingReqInput,
+    GenerateReqInput,
     PauseGenerationReqInput,
 )
 from sglang.srt.managers.tokenizer_communicator_mixin import _Communicator
