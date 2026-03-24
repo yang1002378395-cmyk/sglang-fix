@@ -28,7 +28,7 @@ import sys
 import threading
 from functools import partialmethod
 from multiprocessing import shared_memory
-from typing import TYPE_CHECKING, Any, Dict, Union
+from typing import TYPE_CHECKING, Any, Dict, Union, Optional
 
 import setproctitle
 import zmq
@@ -43,6 +43,8 @@ from sglang.srt.managers.io_struct import (
     BatchMultimodalOutput,
     BatchStrOutput,
     BatchTokenIDOutput,
+    ContinueGenerationReqInput,
+    PauseGenerationReqInput,
 )
 from sglang.srt.managers.tokenizer_communicator_mixin import _Communicator
 from sglang.srt.managers.tokenizer_manager import TokenizerManager
