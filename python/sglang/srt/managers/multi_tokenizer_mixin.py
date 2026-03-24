@@ -28,12 +28,12 @@ import sys
 import threading
 from functools import partialmethod
 from multiprocessing import shared_memory
-from typing import TYPE_CHECKING, Any, Dict, Union, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
+import fastapi
 import setproctitle
 import zmq
 import zmq.asyncio
-import fastapi
 
 from sglang.srt.disaggregation.utils import DisaggregationMode, TransferBackend
 from sglang.srt.managers.disagg_service import start_disagg_service

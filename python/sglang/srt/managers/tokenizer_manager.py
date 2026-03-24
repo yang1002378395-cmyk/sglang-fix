@@ -2164,7 +2164,9 @@ class TokenizerManager(TokenizerCommunicatorMixin, TokenizerManagerMultiItemMixi
         state = self.rid_to_state.get(recv_obj.rid, None)
         if state is None:
             # Request already completed and cleaned up, ignore abort
-            logger.debug(f"Ignoring abort for already-completed request: {recv_obj.rid}")
+            logger.debug(
+                f"Ignoring abort for already-completed request: {recv_obj.rid}"
+            )
             return
         state.finished = True
         state.time_stats.set_finished_time()

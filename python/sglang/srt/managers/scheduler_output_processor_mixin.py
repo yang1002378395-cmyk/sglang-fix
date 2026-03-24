@@ -229,6 +229,7 @@ class SchedulerOutputProcessorMixin:
                             )
                             # Use to_finish instead of abort_request for running requests
                             from sglang.srt.managers.schedule_batch import FINISH_ABORT
+
                             req.to_finish = FINISH_ABORT(
                                 message=f"Grammar accept_token failed: {e}"
                             )
@@ -519,6 +520,7 @@ class SchedulerOutputProcessorMixin:
                     )
                     # Use to_finish instead of abort_request for running requests
                     from sglang.srt.managers.schedule_batch import FINISH_ABORT
+
                     req.to_finish = FINISH_ABORT(
                         message=f"Grammar accept_token failed: {e}"
                     )
